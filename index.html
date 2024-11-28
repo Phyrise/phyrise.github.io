@@ -1,1 +1,169 @@
-Hello World
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arthur Longuefosse's Homepage</title>
+    <style>
+        body {
+            margin: 30px 100px;
+            font-family: Tahoma, Geneva, sans-serif;
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        .profile-content, .links, .main-content, .research-content, .teaching-content {
+            margin: 0;
+            padding: 0;
+        }
+        .links a, .main-content a, .research-content a, .teaching-content a {
+            color: #000;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .links a:hover, .main-content a:hover, .research-content a:hover, .teaching-content a:hover {
+            text-decoration: underline;
+        }
+        img {
+            height: 270px;
+            border: 1px solid black;
+        }
+        .title-large {
+            font-size: 28px;
+            font-family: Georgia, "Times New Roman", Times, serif;
+            font-weight: bold;
+            color: #000;
+        }
+        .title-med {
+            font-size: 20px;
+            font-family: Georgia, "Times New Roman", Times, serif;
+            font-weight: bold;
+            color: #000;
+        }
+        .content, .research-content, .teaching-content {
+            text-align: justify;
+            font-size: 16px;
+            color: #000;
+        }
+		h2, h4 {
+    margin: 0; /* Resets default margins */
+    padding: 0; /* Ensures no padding is adding extra space */
+}
+
+    </style>
+</head>
+<body>
+    <table border="0" width="100%">
+        <tbody>
+            <tr>
+                <td width="337">
+                    <a href="pdp.jpg"><img src="pdp.jpg" alt="Arthur Longuefosse's Portrait"></a>
+                </td>
+                <td width="15"></td>
+                <td>
+                    <h1>Arthur Longuefosse</h1>
+					<br>
+					<p class="profile-content"><strong>Actively seeking postdoctoral opportunities starting January 2025!</strong></p>
+					<br>
+                    <p class="profile-content">3rd year PhD Candidate in Computer Science</p>
+                    <p class="profile-content">LaBRI, University of Bordeaux, France</p>
+                    <p class="profile-content">arthur.longuefosse [at] u-bordeaux.fr</p>
+
+                        <a href="Arthur_Longuefosse_CV.pdf">CV</a> | 
+                        <a href="https://scholar.google.com/citations?user=l08JPkAAAAAJ&hl=fr">Google Scholar</a> |
+                        <a href="https://github.com/Phyrise">GitHub</a> | 
+                        <a href="https://www.linkedin.com/in/arthur-longuefosse-71a4501b3/">LinkedIn</a>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    <br>
+    <table border="0">
+        <tbody>
+            <tr>
+				<td width="1000">
+					<p align="justify" class="content">I am a third-year PhD student at the University of Bordeaux, currently working on lung MR to CT synthesis using deep learning, under the supervision of <a href="https://www.labri.fr/en/profil/Desbarats_ID1084917673">Pascal Desbarats</a> and <a href="https://www.labri.fr/profil/Baldacci_ID1346658490">Fabien Baldacci</a>. 
+						My interest also extends to various other deep learning applications within the realm of medical imaging (segmentation, classification, inpainting..). I am actively seeking postdoctoral opportunities starting January 2025.</p>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+	<h2 class="title-large">News & Updates</h2>
+	<ul>
+		<li>May 2024 - Presenting two posters at <a href="https://biomedicalimaging.org/2024/" target="_blank">ISBI 2024</a> in Athens, Greece. Come say hi!</li>
+		<li>July 2024 - I'll be attending <a href="https://2024.midl.io/" target="_blank">MIDL 2024</a> conference in Paris, hope to see you there!</li>
+	</ul>
+	<br>
+	
+
+    <h2 class="title-large">Publications</h2>
+	<br>
+
+    <table border="0">
+        <tbody>
+            <tr>
+				<td width="1000">
+					<h4 class="title-med">Journal Articles</h4>
+					<p>
+						<strong>Generating high-resolution synthetic CT from lung MRI with ultrashort echo times: initial evaluation in cystic fibrosis</strong><br>
+						<u>Arthur Longuefosse</u>, Julien Raoult, Ilyes Benlala, Baudouin Denis de Senneville, Thomas Benkert, Julie Macey, Stéphanie Bui, Patrick Berger, Gilbert Ferretti, Jean-Yves Gaubert, Renan Liberge, Antoine Hutt, Baptiste Morel, François Laurent, Fabien Baldacci, Gaël Dournes <br>
+						<em>Radiology</em>, 2023
+					</p>
+					<hr> 
+					
+					<h4 class="title-med">Conference Papers</h4>
+
+						<p><strong>Incorporating 3D Information in 2.5D Networks: Strategies for MR to CT Synthesis </strong><br>
+							<u>Arthur Longuefosse</u>, Baudouin Denis De Senneville, Gaël Dournes, Ilyes Benlala, Fabien Baldacci, Pascal Desbarats <br>
+								<em>ISBI</em>, 2024<br>
+
+						<p><strong>On the use of perceptual loss for fine structure generation : Illustration on lung MR to CT synthesis </strong><br>
+							<u>Arthur Longuefosse</u>, Baudouin Denis De Senneville, Gaël Dournes, Ilyes Benlala, Fabien Baldacci, Pascal Desbarats <br>
+								<em>ISBI</em>, 2024<br>
+
+						<p><strong>MR to CT synthesis using GANs: a practical guide applied to thoracic imaging  </strong><br>
+							<u>Arthur Longuefosse</u>, Baudouin Denis De Senneville, Gaël Dournes, Ilyes Benlala, François Laurent, Fabien Baldacci, Pascal Desbarats <br>
+								<em>IVAPP</em>, 2023<br>
+
+						<p><strong>Lung CT Synthesis Using GANs with Conditional Normalization on Registered Ultrashort Echo-Time MRI</strong><br>
+						<u>Arthur Longuefosse</u>, Gaël Dournes, Ilyes Benlala, Baudouin Denis De Senneville, François Laurent, Pascal Desbarats, Fabien Baldacci <br>
+							<em>ISBI</em>, 2023<br>
+
+
+
+						<hr> 
+						<!-- <h4 class="title-med">Preprint</h4> -->
+
+						<p><strong>A Task-Oriented Loss for Medical Image Translation	</strong><br>
+							<u>Arthur Longuefosse</u>, Baudouin Denis De Senneville, Gaël Dournes, Ilyes Benlala, Fabien Baldacci, Pascal Desbarats <br>
+								<em>Submitted to MIDL</em>, 2024<br>
+
+								<br>
+
+				</td>
+            </tr>
+        </tbody>
+    </table>
+    <h2 class="title-large">Teaching</h2>
+	<br>
+
+    <table border="0">
+        <tbody>
+            <tr>
+				<td width="1000">
+						<li>Introduction to computer science (1st year of Bachelor degree), 2021-2023</li>
+						<li>Perception & Interaction (2nd year of Master ASPIC), 2023-2024</li>
+
+				</td>
+            </tr>
+        </tbody>
+    </table>
+</body>
+</html>
+<hr> 
+
+<footer>
+    <p>Last update : May 2024</p>
+</footer>

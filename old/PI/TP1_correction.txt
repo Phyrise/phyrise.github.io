@@ -1,0 +1,19 @@
+import numpy as np
+from ipywidgets import interact, interactive, fixed, interact_manual
+import matplotlib.pyplot as plt
+import cv2
+
+img = cv2.imread("Crew_Dragon.jpg")
+def _plot(x1,x2, flip, rgb):
+    fig, ax = plt.subplots(1,2, figsize=(12,8))
+    ax[0].imshow(img)
+    img2 = img[x1:x2]
+    if(flip):
+        img2 = np.rot90(img2)
+    if(rgb):
+        img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2RGB)
+    ax[1].imshow(img2)
+    ax[0].set_title("img")
+    ax[1].set_title("img cropped")
+        
+interact(_plot, x1=50, x2=500, flip = False, rgb = False)
