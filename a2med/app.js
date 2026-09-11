@@ -57,8 +57,7 @@ const DRAFT = {
     'Le contrôle a conclu à une abstention (ou a échoué) : rien de ce brouillon ne vaut '
     + 'réponse, il n’est donc pas conservé à l’écran.'],
 };
-const STREAM_NOTE = 'Étapes, brouillon et vérification reçus du moteur en direct ; le temps '
-  + 'affiché est mesuré. Le brouillon n’est pas une réponse. <span id="elapsed"></span>';
+const STREAM_NOTE = 'Rédaction de la réponse en cours… <span id="elapsed"></span>';
 const MAXQ_DEFAULT = 500;
 const BUSY_MSG = 'Une réponse est déjà en cours. Attendez sa fin avant d’envoyer '
   + 'une nouvelle question.';
@@ -96,8 +95,8 @@ async function checkHealth() {
       h.corpus_fingerprint ? `empreinte ${String(h.corpus_fingerprint).slice(0, 8)}` : '']
       .filter(Boolean).join(' · ');
     $('fingerprint').textContent = h.corpus_fingerprint
-      ? `Corpus SPILF · scrappé en août 2026 · empreinte ${String(h.corpus_fingerprint).slice(0, 12)}`
-      : 'Corpus SPILF · scrappé en août 2026';
+      ? `Corpus SPILF · août 2026 · ${String(h.corpus_fingerprint).slice(0, 12)}`
+      : 'Corpus SPILF · août 2026';
     if (h.state === 'demarrage') {
       setPill('demarrage', 'Initialisation des modèles…', 'Le moteur se démarre une fois '
         + 'par séance (environ 15 s : corpus et index résidents, worker GPU distant).');
@@ -113,7 +112,7 @@ async function checkHealth() {
       setPill('degrade', 'Moteur de recherche à relancer', detail);
       return;
     }
-    setPill('pret', 'A²-Med prêt', detail);
+    setPill('pret', 'Serveur Sparka', detail);
   } catch {
     setPill('indisponible', 'Service indisponible',
       'La page n’a pas pu joindre le service local (port 8050).');
@@ -145,7 +144,6 @@ function renderAnswer(data) {
       + 'Aucune synthèse n’a été générée.</p>'
       + '<button type="button" class="btn primary" id="synthBtn">Synthétiser ces sources</button>';
     $('limits').hidden = true;
-    $('copyBtn').textContent = 'Copier les passages';
     $('copyAllBtn').hidden = true;
     return;
   }
@@ -177,8 +175,6 @@ function renderAnswer(data) {
 
   // Une abstention n'a pas de « réponse » ni de sources : les actions suivent l'état réel.
   const src = data.sources || [];
-  $('copyBtn').textContent = code === 'ABSTENTION'
-    ? "Copier le motif de l'abstention" : 'Copier la réponse';
   $('copyAllBtn').hidden = code === 'ABSTENTION' || !src.length;
 }
 
@@ -261,7 +257,6 @@ function render(data) {
   current = data;
   $('error').hidden = true;
   $('result').hidden = false;
-  $('resetBtn').hidden = false;
   renderAnswer(data);
   renderSources(data);
   renderTech(data);
@@ -302,11 +297,7 @@ function selectedMode() {
 
 function updateMode() {
   const mode = selectedMode();
-  $('modeHint').textContent = {
-    standard: 'Une synthèse des informations utiles, avec leurs sources.',
-    courte: 'Une réponse plus concise, sans retirer les conditions indispensables. Le temps peut être similaire au mode Standard.',
-    sources: 'Les passages classés, sans attendre une synthèse. Vous pourrez les faire synthétiser ensuite.',
-  }[mode];
+  $('modeHint').textContent = '';
   $('askBtn').textContent = mode === 'sources' ? 'Rechercher les sources' : 'Obtenir une réponse';
 }
 
@@ -608,19 +599,7 @@ $('q').addEventListener('keydown', (e) => {
 document.querySelectorAll('.chip').forEach((c) => {
   c.onclick = () => { $('q').value = c.dataset.q; $('q').focus(); countChars(); };
 });
-$('copyBtn').onclick = (e) => copy(answerText(false), e.currentTarget);
 $('copyAllBtn').onclick = (e) => copy(answerText(true), e.currentTarget);
-$('resetBtn').onclick = () => {
-  $('q').value = '';
-  countChars();
-  $('result').hidden = true;
-  $('error').hidden = true;
-  $('resetBtn').hidden = true;
-  $('draft').hidden = true;
-  $('draftText').textContent = '';
-  current = null;
-  $('q').focus();
-};
 $('clearHistory').onclick = () => { try { localStorage.removeItem(HIST); } catch { /* ignore */ }
   renderHist(); };
 $('healthRefresh').onclick = () => { healthTries = 0; checkHealth(); };

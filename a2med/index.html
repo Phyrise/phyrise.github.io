@@ -33,7 +33,6 @@
       <button type="button" class="state-retry" id="healthRefresh" hidden>ré-essayer</button>
     </p>
   </div>
-  <p class="wrap tagline">Réponses sourcées à partir des recommandations médicales locales.</p>
 </header>
 
 <main class="wrap">
@@ -46,7 +45,7 @@
       aria-describedby="qHint qCount"
       placeholder="Question clinique en français. Précisez le contexte utile : âge, grossesse, immunodépression, allergie, geste ou prélèvement prévu…"></textarea>
     <div class="field-meta">
-      <span id="qHint">Entrée : saut de ligne · Ctrl + Entrée (⌘ + Entrée) : envoyer</span>
+      <span id="qHint">Entrée : envoyer · Shift + Entrée : saut de ligne</span>
       <span id="qCount" aria-live="off">0 / 500</span>
     </div>
     <fieldset class="mode-picker" aria-describedby="modeHint">
@@ -56,17 +55,14 @@
         <label><input type="radio" name="mode" value="courte"><span>Courte<small>Plus concise</small></span></label>
         <label><input type="radio" name="mode" value="sources"><span>Sources<small>Sans génération</small></span></label>
       </div>
-      <p class="fine" id="modeHint">Une synthèse des informations utiles, avec leurs sources.</p>
+      <p class="fine" id="modeHint"></p>
     </fieldset>
     <div class="btn-row">
       <button type="submit" class="btn primary" id="askBtn">Obtenir une réponse</button>
-      <button type="button" class="btn quiet" id="resetBtn" hidden>Nouvelle question</button>
     </div>
     <div class="examples" id="examples">
-      <span class="examples-label">Exemples</span>
-      <button type="button" class="chip" data-q="Conduite à tenir devant une gastro-entérite aiguë chez l'enfant">gastro-entérite aiguë de l'enfant</button>
-      <button type="button" class="chip" data-q="Que disent les recommandations sur la tuberculose pulmonaire ?">tuberculose pulmonaire</button>
-      <button type="button" class="chip" data-q="Prise en charge d'une primo-infection herpétique génitale de l'adulte">primo-infection herpétique</button>
+      <span class="examples-label">Exemple</span>
+      <button type="button" class="chip" data-q="Pour une p&eacute;ritonite localis&eacute;e, quelle dur&eacute;e d'antibioth&eacute;rapie est recommand&eacute;e ?">P&eacute;ritonite localis&eacute;e</button>
     </div>
     <div class="notice" id="error" role="alert" hidden></div>
   </form>
@@ -106,7 +102,6 @@
     </details>
 
     <div class="btn-row">
-      <button type="button" class="btn quiet" id="copyBtn">Copier la réponse</button>
       <button type="button" class="btn quiet" id="copyAllBtn">Copier la réponse et les sources</button>
     </div>
   </section>
