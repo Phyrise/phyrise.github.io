@@ -57,6 +57,16 @@
       </div>
       <p class="fine" id="modeHint"></p>
     </fieldset>
+    <fieldset class="model-picker" id="modelPicker" hidden aria-describedby="modelHint">
+      <legend>Modèle de test</legend>
+      <div class="model-options">
+        <label><input type="radio" name="model" value="flash" checked><span>Qwen Flash<small>pipeline</small></span></label>
+        <label><input type="radio" name="model" value="qwen9b"><span>Qwen 9B<small>test</small></span></label>
+        <label><input type="radio" name="model" value="qwen4b"><span>Qwen 4B<small>test</small></span></label>
+        <label><input type="radio" name="model" value="qwen2b"><span>Qwen 2B<small>test</small></span></label>
+      </div>
+      <p class="fine" id="modelHint">Même retrieval ; seule la génératrice change.</p>
+    </fieldset>
     <div class="btn-row">
       <button type="submit" class="btn primary" id="askBtn">Obtenir une réponse</button>
     </div>

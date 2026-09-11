@@ -1,37 +1,7 @@
-const gate = document.getElementById("passwordGate");
-const passwordForm = document.getElementById("passwordForm");
-const passwordInput = document.getElementById("sitePassword");
-const passwordError = document.getElementById("passwordError");
-async function unlock() {
-  passwordError.hidden = true;
-  try {
-    const response = await fetch(API_BASE + "/__auth", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      credentials: "include",
-      body: JSON.stringify({password: passwordInput.value})
-    });
-    if (!response.ok) throw new Error("bad password");
-    sessionStorage.setItem("a2med_test_unlocked", "1");
-    location.reload();
-  } catch {
-    passwordError.hidden = false;
-    passwordInput.select();
-  }
-}
-if (sessionStorage.getItem("a2med_test_unlocked") === "1") gate.remove();
-passwordForm.addEventListener("submit", event => { event.preventDefault(); unlock(); });
-if (gate.isConnected) passwordInput.focus();
-
 /* A²-Med UI V1 — aucun framework, aucun CDN, aucune donnée envoyée ailleurs que la
    question elle-même. Le front ne fabrique jamais de contenu médical : il affiche les
    affirmations et les extraits renvoyés par le produit, échappés. */
 const $ = (id) => document.getElementById(id);
-const API_BASE = String(window.A2MED_API_BASE || "").replace(/\/$/, "");
-function apiFetch(path, init = {}) {
-  const headers = new Headers(init.headers || {});
-  return fetch(API_BASE + path, { ...init, headers, credentials: "include" });
-}
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 /* Tout est échappé AVANT insertion ; la seule mise en forme reconnue est le gras
@@ -68,6 +38,7 @@ const STATUS = {
   INCONNU: ['?', 'Statut non reconnu par l’interface'],
 };
 let busy = false, current = null, tickTimer = null, t0 = 0, maxQ = MAXQ_DEFAULT;
+let modelOptions = {};
 let streamStats = null, resultWas = null;
 let healthTimer = null, healthTries = 0;
 
@@ -87,6 +58,8 @@ async function checkHealth() {
     const h = await r.json();
     if (!r.ok) throw new Error(String(r.status));
     maxQ = (h.limits && h.limits.question_chars) || MAXQ_DEFAULT;
+    modelOptions = h.model_options || {};
+    $("modelPicker").hidden = Object.keys(modelOptions).length < 2;
     $('q').maxLength = maxQ;
     countChars();
     const gen = h.generator || {}, gpu = h.gpu0 || {};
@@ -295,6 +268,10 @@ function selectedMode() {
   return document.querySelector('input[name="mode"]:checked').value;
 }
 
+function selectedModel() {
+  return document.querySelector('input[name="model"]:checked')?.value || null;
+}
+
 function updateMode() {
   const mode = selectedMode();
   $('modeHint').textContent = '';
@@ -376,7 +353,7 @@ async function askStream(q, mode = selectedMode(), sourceToken = null) {
      sortie de rendu et puisse retomber sur /api/ask si le flux n'existe pas. */
   const r = await apiFetch('/api/ask/stream', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question: q, mode, ...(sourceToken ? { source_token: sourceToken } : {}) }) });
+    body: JSON.stringify({ question: q, mode, ...(selectedModel() ? { model: selectedModel() } : {}), ...(sourceToken ? { source_token: sourceToken } : {}) }) });
   if (!r.ok) {
     let data = {};
     try { data = await r.json(); } catch { /* réponse vide */ }
@@ -417,7 +394,7 @@ async function askClassic(q, mode = selectedMode(), sourceToken = null) {
   $('progressNote').innerHTML = 'Calcul en cours ; les étapes en direct sont indisponibles. <span id="elapsed"></span>';
   const r = await apiFetch('/api/ask', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question: q, mode, ...(sourceToken ? { source_token: sourceToken } : {}) }) });
+    body: JSON.stringify({ question: q, mode, ...(selectedModel() ? { model: selectedModel() } : {}), ...(sourceToken ? { source_token: sourceToken } : {}) }) });
   let data = {};
   try { data = await r.json(); } catch { /* réponse vide : on garde le message générique */ }
   if (!r.ok) {

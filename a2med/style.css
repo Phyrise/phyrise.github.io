@@ -251,7 +251,16 @@ summary:focus-visible, .state-retry:focus-visible, .hist:focus-visible {
   color: var(--accent-dark); box-shadow: 0 1px 3px #0000000d; }
 .mode-options input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
 .mode-options input:disabled + span { opacity: .6; cursor: wait; }
-.mode-picker .fine { margin: 7px 0 0; }
+.mode-picker .fine, .model-picker .fine { margin: 7px 0 0; }
+.model-picker { border: 0; padding: 0; margin: 14px 0; min-width: 0; }
+.model-picker legend { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.model-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; background: var(--bg); border: 1px solid var(--line); padding: 4px; border-radius: 12px; }
+.model-options label { position: relative; cursor: pointer; min-width: 0; }
+.model-options input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.model-options span { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 56px; border: 1px solid transparent; border-radius: 8px; padding: 6px 3px; font-size: 13px; font-weight: 600; color: var(--ink-2); text-align: center; }
+.model-options small { font-size: 11px; font-weight: 400; color: var(--muted); }
+.model-options input:checked + span { background: var(--paper); border-color: var(--accent); color: var(--accent-dark); box-shadow: 0 1px 3px #0000000d; }
+.model-options input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
 .source-rank { display: inline-block; margin: 0 0 8px; padding: 3px 8px;
   border-radius: 6px; background: var(--accent-bg); color: var(--accent-dark); font-size: 12px; font-weight: 600; }
 .result-timing { margin: 8px 0 16px; }
