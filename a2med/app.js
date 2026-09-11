@@ -1,3 +1,33 @@
+const API_BASE = String(window.A2MED_API_BASE || "").replace(/\/$/, "");
+const apiFetch = (path, init = {}) => {
+  const headers = new Headers(init.headers || {});
+  return fetch(API_BASE + path, { ...init, headers, credentials: "include" });
+};
+const gate = document.getElementById("passwordGate");
+const passwordForm = document.getElementById("passwordForm");
+const passwordInput = document.getElementById("sitePassword");
+const passwordError = document.getElementById("passwordError");
+async function unlock() {
+  passwordError.hidden = true;
+  try {
+    const response = await fetch(API_BASE + "/__auth", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      credentials: "include",
+      body: JSON.stringify({password: passwordInput.value})
+    });
+    if (!response.ok) throw new Error("bad password");
+    sessionStorage.setItem("a2med_test_unlocked", "1");
+    gate.remove();
+  } catch {
+    passwordError.hidden = false;
+    passwordInput.select();
+  }
+}
+if (sessionStorage.getItem("a2med_test_unlocked") === "1") gate.remove();
+passwordForm.addEventListener("submit", event => { event.preventDefault(); unlock(); });
+if (gate.isConnected) passwordInput.focus();
+
 /* A²-Med UI V1 — aucun framework, aucun CDN, aucune donnée envoyée ailleurs que la
    question elle-même. Le front ne fabrique jamais de contenu médical : il affiche les
    affirmations et les extraits renvoyés par le produit, échappés. */
