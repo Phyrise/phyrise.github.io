@@ -1,7 +1,7 @@
 const API_BASE = String(window.A2MED_API_BASE || "").replace(/\/$/, "");
 const apiFetch = (path, init = {}) => {
   const headers = new Headers(init.headers || {});
-  const session = sessionStorage.getItem("a2med_session");
+  const session = sessionStorage.getItem("a2med_proxy_session");
   if (session) headers.set("X-A2Med-Session", session);
   return fetch(API_BASE + path, { ...init, headers, credentials: "include" });
 };
@@ -18,18 +18,18 @@ async function unlock() {
       credentials: "include",
       body: JSON.stringify({password: passwordInput.value})
     });
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error("bad password");
-    const auth = await response.json();
-    if (!auth.session) throw new Error("missing session");
-    sessionStorage.setItem("a2med_session", auth.session);
+    if (payload.session) sessionStorage.setItem("a2med_proxy_session", payload.session);
     sessionStorage.setItem("a2med_test_unlocked", "1");
     gate.remove();
+    checkHealth();
   } catch {
     passwordError.hidden = false;
     passwordInput.select();
   }
 }
-if (sessionStorage.getItem("a2med_test_unlocked") === "1" && sessionStorage.getItem("a2med_session")) gate.remove();
+// The server, not a cached unlocked flag, decides whether a session is valid.
 passwordForm.addEventListener("submit", event => { event.preventDefault(); unlock(); });
 if (gate.isConnected) passwordInput.focus();
 
@@ -45,9 +45,9 @@ const rich = (s) => esc(s).replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
 
 const HIST = 'a2med_ui_v1_history';
 
-/* Route de streaming. `false` = approche B : plus aucun token n’est affiché, la page
-   revient à la requête unique /api/ask (le flux reste utilisable côté serveur). */
-const USE_STREAM = true;
+/* Candidate contract: this UI uses the single validated response route. The candidate
+   API does not advertise a streaming contract, so no provisional model text is shown. */
+const USE_STREAM = false;
 /* Le brouillon n’est JAMAIS une réponse : il est étiqueté, tenu à l’écart de la carte
    validée, et effacé quand la validation conclut à l’abstention ou échoue. */
 const DRAFT = {
@@ -90,8 +90,15 @@ async function checkHealth() {
   if (busy) return;                                      // le daemon sérialise : ne sonde pas
   try {
     const r = await apiFetch('/api/health');
+    if (r.status === 401) {
+      sessionStorage.removeItem('a2med_proxy_session');
+      if (!gate.isConnected) document.body.append(gate);
+      setPill('indisponible', 'Connexion requise', 'Saisissez le mot de passe pour accéder au prototype.');
+      return;
+    }
     const h = await r.json();
     if (!r.ok) throw new Error(String(r.status));
+    if (gate.isConnected) gate.remove();
     maxQ = (h.limits && h.limits.question_chars) || MAXQ_DEFAULT;
     modelOptions = h.model_options || {};
     $("modelPicker").hidden = Object.keys(modelOptions).length < 2;
@@ -99,7 +106,7 @@ async function checkHealth() {
     countChars();
     const gen = h.generator || {}, gpu = h.gpu0 || {};
     const detail = [`gpu0 ${gpu.mem_used_mib ?? '?'} MiB`, `${h.n_pool ?? '?'} passages retenus`,
-      `génératrice ${gen.ok ? 'ok' : 'indisponible'}`,
+      `génératrice ${gen.ok === true ? 'disponible' : gen.ok === false ? 'indisponible' : 'configurée, disponibilité non sondée'}`,
       h.corpus_fingerprint ? `empreinte ${String(h.corpus_fingerprint).slice(0, 8)}` : '']
       .filter(Boolean).join(' · ');
     $('fingerprint').textContent = h.corpus_fingerprint
@@ -123,7 +130,7 @@ async function checkHealth() {
     setPill('pret', 'Serveur Sparka', detail);
   } catch {
     setPill('indisponible', 'Service indisponible',
-      'La page n’a pas pu joindre le service local (port 8050).');
+      'La page n’a pas pu joindre le service. Réessayez dans quelques instants.');
   }
 }
 
@@ -148,9 +155,8 @@ function renderAnswer(data) {
     $('statusCode').textContent = 'SOURCES';
     $('statusMeaning').textContent = 'd’après corpus SPILF';
     $('answerTime').textContent = `Recherche${total}`;
-    $('answer').innerHTML = '<p>Les passages ci-dessous sont les cinq résultats du retrieval. '
-      + 'Aucune synthèse n’a été générée.</p>'
-      + '<button type="button" class="btn primary" id="synthBtn">Synthétiser ces sources</button>';
+    $('answer').innerHTML = '<p>Les passages ci-dessous sont les résultats du retrieval. '
+      + 'Aucune synthèse n’a été générée dans cette instance expérimentale.</p>';
     $('limits').hidden = true;
     $('copyAllBtn').hidden = true;
     return;
@@ -217,7 +223,9 @@ function renderSources(data) {
   $('sourcesPanel').hidden = !src.length;
   $('sourcesTitle').textContent = data.source_only
     ? `Passages retrouvés — sans synthèse (${src.length})`
-    : `Sources citées (${src.length})`;
+    : data.technique?.experimental_depth
+      ? `Passages transmis au générateur (${src.length})`
+      : `Sources citées (${src.length})`;
   $('sources').innerHTML = src.map((s, index) => {
     const ex = String(s.excerpt ?? '');
     return `<article class="source">
@@ -268,7 +276,8 @@ function render(data) {
   renderAnswer(data);
   renderSources(data);
   renderTech(data);
-  if (data.source_only && $('synthBtn')) $('synthBtn').onclick = synthesizeSources;
+  // L'essai n'expose pas de synthèse depuis un résultat Sources : cela garantirait
+  // une réutilisation exacte des passages, qui n'est pas implémentée dans cette façade.
 }
 
 /* ------------------------------------------------------------ erreurs (français, sobre) */
@@ -305,6 +314,10 @@ function selectedMode() {
 
 function selectedModel() {
   return document.querySelector('input[name="model"]:checked')?.value || null;
+}
+
+function selectedDepth() {
+  return Number(document.querySelector('input[name="depth"]:checked')?.value || 5);
 }
 
 function updateMode() {
@@ -388,7 +401,7 @@ async function askStream(q, mode = selectedMode(), sourceToken = null) {
      sortie de rendu et puisse retomber sur /api/ask si le flux n'existe pas. */
   const r = await apiFetch('/api/ask/stream', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question: q, mode, ...(selectedModel() ? { model: selectedModel() } : {}), ...(sourceToken ? { source_token: sourceToken } : {}) }) });
+    body: JSON.stringify({ question: q, mode, depth: selectedDepth(), ...(selectedModel() ? { model: selectedModel() } : {}), ...(sourceToken ? { source_token: sourceToken } : {}) }) });
   if (!r.ok) {
     let data = {};
     try { data = await r.json(); } catch { /* réponse vide */ }
@@ -426,10 +439,10 @@ async function askStream(q, mode = selectedMode(), sourceToken = null) {
 
 async function askClassic(q, mode = selectedMode(), sourceToken = null) {
   setStep(-1);
-  $('progressNote').innerHTML = 'Calcul en cours ; les étapes en direct sont indisponibles. <span id="elapsed"></span>';
+  $('progressNote').innerHTML = 'Recherche des sources et préparation du résultat en cours… <span id="elapsed"></span>';
   const r = await apiFetch('/api/ask', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question: q, mode, ...(selectedModel() ? { model: selectedModel() } : {}), ...(sourceToken ? { source_token: sourceToken } : {}) }) });
+    body: JSON.stringify({ question: q, mode, depth: selectedDepth(), ...(selectedModel() ? { model: selectedModel() } : {}), ...(sourceToken ? { source_token: sourceToken } : {}) }) });
   let data = {};
   try { data = await r.json(); } catch { /* réponse vide : on garde le message générique */ }
   if (!r.ok) {
@@ -517,7 +530,7 @@ async function ask() {
       render(res.data);
       say(`Résultat prêt. ${res.data.source_only ? 'Passages retrouvés sans synthèse.' :
         STATUS[code][1]} ` +
-        `${(res.data.sources || []).length} source(s) citée(s).`);
+        `${(res.data.sources || []).length} passage(s) consultable(s).`);
       remember(q, res.data.status);
     }
   } catch {
@@ -597,6 +610,9 @@ function countChars() {
 }
 
 document.querySelectorAll('input[name="mode"]').forEach(el => el.addEventListener('change', updateMode));
+document.querySelectorAll('input[name="depth"]').forEach(el => el.addEventListener('change', () => {
+  $('depthHint').textContent = `Profondeur sélectionnée : ${selectedDepth()} passages. La prochaine question l'utilisera.`;
+}));
 updateMode();
 
 $('askForm').addEventListener('submit', (e) => { e.preventDefault(); ask(); });
