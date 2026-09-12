@@ -1,6 +1,8 @@
 const API_BASE = String(window.A2MED_API_BASE || "").replace(/\/$/, "");
 const apiFetch = (path, init = {}) => {
   const headers = new Headers(init.headers || {});
+  const session = sessionStorage.getItem("a2med_session");
+  if (session) headers.set("X-A2Med-Session", session);
   return fetch(API_BASE + path, { ...init, headers, credentials: "include" });
 };
 const gate = document.getElementById("passwordGate");
@@ -17,6 +19,9 @@ async function unlock() {
       body: JSON.stringify({password: passwordInput.value})
     });
     if (!response.ok) throw new Error("bad password");
+    const auth = await response.json();
+    if (!auth.session) throw new Error("missing session");
+    sessionStorage.setItem("a2med_session", auth.session);
     sessionStorage.setItem("a2med_test_unlocked", "1");
     gate.remove();
   } catch {
