@@ -29,7 +29,7 @@ async function unlock() {
     passwordInput.select();
   }
 }
-if (sessionStorage.getItem("a2med_test_unlocked") === "1") gate.remove();
+if (sessionStorage.getItem("a2med_test_unlocked") === "1" && sessionStorage.getItem("a2med_session")) gate.remove();
 passwordForm.addEventListener("submit", event => { event.preventDefault(); unlock(); });
 if (gate.isConnected) passwordInput.focus();
 
