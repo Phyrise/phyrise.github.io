@@ -24,12 +24,23 @@ const STATE = {
 };
 
 async function api(path, options = {}) {
+  // Session proxy par en-tête (mobile : cookies tiers cross-site bloqués) ; le cookie
+  // continue de marcher en parallèle sur les navigateurs qui l'autorisent.
+  const session = sessionStorage.getItem("a2med_proxy_session");
+  const headers = options.body ? { "Content-Type": "application/json" } : {};
+  if (session) headers["X-A2Med-Session"] = session;
   const response = await fetch(API_BASE + path, {
     method: options.method || "GET",
-    headers: options.body ? { "Content-Type": "application/json" } : undefined,
+    headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
     credentials: "include",
   });
+  if (response.status === 401) {
+    // La page eval n'a pas de gate : 401 (visite froide ou session morte)
+    // → retour à la page principale où le gate redemande le mot de passe.
+    sessionStorage.removeItem("a2med_proxy_session");
+    location.href = "./";
+  }
   const text = await response.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = { error: "réponse non JSON du service", code: "serveur" }; }

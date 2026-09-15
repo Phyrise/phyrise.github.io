@@ -1,7 +1,22 @@
 const API_BASE = String(window.A2MED_API_BASE || "").replace(/\/$/, "");
 const apiFetch = (path, init = {}) => {
   const headers = new Headers(init.headers || {});
-  return fetch(API_BASE + path, { ...init, headers, credentials: "include" });
+  // Session proxy par en-tête (mobile : cookies tiers cross-site bloqués) ; le cookie
+  // continue de marcher en parallèle sur les navigateurs qui l'autorisent.
+  const session = sessionStorage.getItem("a2med_proxy_session");
+  if (session) headers.set("X-A2Med-Session", session);
+  return fetch(API_BASE + path, { ...init, headers, credentials: "include" })
+    .then(response => {
+      // 401 alors qu'une session était posée = session morte (proxy redémarré,
+      // token éphémère) → re-passer par le gate. 401 sans session = normal
+      // (le gate est encore visible) : on ne reload pas.
+      if (response.status === 401 && sessionStorage.getItem("a2med_test_unlocked") === "1") {
+        sessionStorage.removeItem("a2med_proxy_session");
+        sessionStorage.removeItem("a2med_test_unlocked");
+        location.reload();
+      }
+      return response;
+    });
 };
 const gate = document.getElementById("passwordGate");
 const passwordForm = document.getElementById("passwordForm");
@@ -17,6 +32,8 @@ async function unlock() {
       body: JSON.stringify({password: passwordInput.value})
     });
     if (!response.ok) throw new Error("bad password");
+    const payload = await response.json().catch(() => ({}));
+    if (payload.session) sessionStorage.setItem("a2med_proxy_session", payload.session);
     sessionStorage.setItem("a2med_test_unlocked", "1");
     gate.remove();
   } catch {
