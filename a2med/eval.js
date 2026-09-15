@@ -207,7 +207,8 @@ async function createSession() {
   if (!b) return notice("sessionNotice", "Jeu introuvable.", "error");
   try {
     STATE.session = await api("/api/eval/session", { method: "POST", body: {
-      name, benchmark, benchmark_sha256: b.sha256, mode: $("newSessionMode").value, label: name } });
+      name, benchmark, benchmark_sha256: b.sha256, mode: $("newSessionMode").value, label: name,
+      ...retrievalOptions() } });
     $("newSessionName").value = "";
     localStorage.setItem(LS.last, name);
     notice("sessionNotice", "", "info");
@@ -460,6 +461,9 @@ function runRow(out) {
     n_claims: (out.technique || {}).n_claims,
     claims_cited: answer.map((a) => ({ text: a.text, refs: a.refs, citation_valid: a.citation_valid })),
     top5_passage_ids: (out.technique || {}).top5_pids || [],
+    top_context_pids: (out.technique || {}).top_context_pids || [],
+    retrieval_profile: (out.technique || {}).retrieval_profile,
+    context_k: (out.technique || {}).context_k,
     source_statuses: (out.sources || []).map((s) => ({ ref: s.ref, passage_id: s.passage_id,
                                                       source_status: s.source_status,
                                                       authority: s.source_authority })),
@@ -595,7 +599,7 @@ async function runCompare(keepRetrieval) {
   setBusy(true, "retrieval en cours");
   if (!keepRetrieval || !retrieval) {
     try {
-      retrieval = await api("/api/eval/retrieval", { method: "POST", body: { question } });
+      retrieval = await api("/api/eval/retrieval", { method: "POST", body: { question, ...retrievalOptions() } });
       STATE.cmpRetrieval = retrieval;
     } catch (e) {
       setBusy(false);
@@ -658,7 +662,7 @@ async function generateInto(article, key, label, question, retrieval, qid, blind
     if (!retrieval.source_token) throw new Error("jeton de retrieval absent (reproduction gelée)");
     const out = await api("/api/eval/generate", { method: "POST", body: {
       question, source_token: retrieval.source_token, generator: key,
-      mode: $("cmpMode").value,
+      mode: $("cmpMode").value, ...retrievalOptions(),
       expected_prompt_sha256: (retrieval.technique || {}).generation_prompt_sha256 || null } });
     status.textContent = out.status || "—";
     const chars = (out.answer || []).reduce((n, a) => n + a.text.length, 0);
@@ -682,6 +686,9 @@ async function generateInto(article, key, label, question, retrieval, qid, blind
                  generation_s: (out.timings || {}).generation_s, t_total_s: (out.timings || {}).t_total_s },
       generation_prompt_sha256: sha,
       top5_passage_ids: (out.technique || {}).top5_pids || [],
+      top_context_pids: (out.technique || {}).top_context_pids || [],
+      retrieval_profile: (out.technique || {}).retrieval_profile,
+      context_k: (out.technique || {}).context_k,
       n_claims: (out.technique || {}).n_claims,
     }, blind);
   } catch (e) {
@@ -704,7 +711,9 @@ async function savePanel(qid, label, generatorKey, patch, blind) {
   if (!STATE.session) return;
   const panelKey = `cmp-${label}`;
   const body = { benchmark_id: qid, panel_key: panelKey, label,
-                 generator_key: blind ? null : generatorKey, ...patch };
+                 // The label remains blind in the UI, but the server-side session/export must
+                 // retain the recoverable label→generator mapping before revelation.
+                 generator_key: generatorKey, ...patch };
   try {
     if (patch.response !== undefined || patch.run_status !== undefined) {
       await api(`/api/eval/session/${encodeURIComponent(STATE.session.name)}/run`,
@@ -781,7 +790,7 @@ async function runModes() {
     }));
     setBusy(true, `mode ${mode}`);
     try {
-      const body = { question, mode };
+      const body = { question, mode, ...retrievalOptions() };
       if ($("runModel").value) body.model = $("runModel").value;
       const out = await api("/api/ask", { method: "POST", body });
       renderModePanel(article, out);
@@ -789,8 +798,7 @@ async function runModes() {
         run_status: out.status || (out.source_only ? "SOURCES_ONLY" : null),
         mode, response: (out.answer || []).map((a) => `• ${a.text}`).join("\n")
           || (out.source_only ? "[SOURCES_ONLY]" : out.reason || ""),
-        answer_chars: (out.answer || []).reduce((n, a) => n + a.text.length, 0)
-          || (out.question || "").length,
+        answer_chars: (out.answer || []).reduce((n, a) => n + a.text.length, 0),
         timings: { retrieval_s: (out.timings || {}).retrieval_s,
                    generation_s: (out.timings || {}).generation_s, t_total_s: (out.timings || {}).t_total_s },
         top5_passage_ids: (out.technique || {}).top5_pids || [],
@@ -836,7 +844,7 @@ async function runLab() {
   notice("labNotice", "", "info");
   setBusy(true, "trace retrieval en cours");
   try {
-    const out = await api("/api/eval/lab", { method: "POST", body: { question } });
+    const out = await api("/api/eval/lab", { method: "POST", body: { question, ...retrievalOptions() } });
     renderLab(out);
   } catch (e) {
     notice("labNotice", "Trace en échec : " + e.message, "error");
@@ -986,3 +994,21 @@ async function boot() {
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
 else boot();
+
+// V2.1 UX: benchmark-first controls, frontend-only API option propagation.
+const TAXONOMY_LABELS = {RETRIEVAL_MISS:"Source pertinente absente",RERANKER_DROP:"Source écartée au classement",GENERATOR_OMISSION:"Élément important oublié",GENERATOR_OVERGENERALIZATION:"Réponse trop générale",IMPORTANT_CONDITION_MISSING:"Condition importante manquante",INCORRECT_FACT:"Fait incorrect",INAPPROPRIATE_ABSTENTION:"Abstention injustifiée",SHOULD_HAVE_ABSTAINED:"Aurait dû s’abstenir",EXCESSIVE_DETAIL:"Trop détaillé",SOURCE_PROVENANCE_ISSUE:"Problème de source",CITATION_SUPPORT_ISSUE:"Citation insuffisante",GOLD_PROBLEM:"Problème de référence",QUESTION_AMBIGUOUS:"Question ambiguë",OTHER:"Autre"};
+function retrievalOptions(){return {retrieval_profile:$("retrievalProfile").value,context_k:Number($("contextK").value)};}
+function updateActiveConfig(){const x={hybrid:"hybride équilibré",dense:"sémantique dense",bm25:"lexical BM25"};$("activeConfig").textContent=`${x[$("retrievalProfile").value]} · ${$("contextK").value} passages`;}
+function updateHome(){const s=STATE.session;$("continueBtn").hidden=!s;$("sessionSummary").textContent=s?`${s.label||s.name} · ${STATE.questions.length} questions · ${STATE.progress.n_items_scored||0} revues`:"Choisissez ou créez une session dans la configuration pour commencer.";}
+function renderCodes(){const l=$("codeList");if(l.dataset.built)return;l.innerHTML=(STATE.taxonomy||[]).map(c=>`<label class="check"><input type="checkbox" value="${esc(c)}"><span>${esc(TAXONOMY_LABELS[c]||c)}</span></label>`).join("");l.dataset.built="1";}
+function setVerdict(v){if(!STATE.current)return notice("runNotice","Sélectionnez une question.","warn");document.querySelectorAll("#scoring .verdicts button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.verdict===v)));$("codesField").hidden=!["partial","incorrect"].includes(v);}
+async function saveAndNext(){if(!STATE.current)return;const v=(document.querySelector("#scoring .verdicts button[aria-pressed=true]")||{}).dataset?.verdict||null;await postScore({verdict:v,codes:["partial","incorrect"].includes(v)?currentCodes():[],note:$("noteBox").value});move(1);}
+function renderGenerators(){const a=STATE.generators.filter(g=>g.available),n=a.find(g=>g.key==="qwen9b"&&g.model_served!==false),f=STATE.generators.find(g=>g.key==="flash"),p=(n||f||a[0]||{}).key||"";$("cmpGenerators").innerHTML=STATE.generators.map(g=>`<label class="check gen${g.available?"":" off"}"><input type="checkbox" value="${esc(g.key)}" ${g.key===p?"checked":""} ${g.available?"":"disabled"}><span>${esc(g.label)}</span><small>${g.available?`modèle ${esc(g.model||"?")}`:"indisponible"}</small></label>`).join("");$("runModel").innerHTML=STATE.generators.map(g=>`<option value="${esc(g.key)}" ${g.key===p?"selected":""} ${g.available?"":"disabled"}>${esc(g.label)}</option>`).join("");}
+async function runQuestion(){if(!STATE.current||!STATE.session)return notice("runNotice","Reprenez une session puis choisissez une question.","warn");const body={question:STATE.current.question,mode:$("runMode").value,...retrievalOptions()};if($("runModel").value)body.model=$("runModel").value;setBusy(true,"calcul en cours");try{const out=await api("/api/ask",{method:"POST",body});renderRunResult(out);await saveRun(out);}catch(e){notice("runNotice",e.message,"error");}finally{setBusy(false);}}
+async function runCompare(keep){const q=($("cmpFree").value.trim()||(STATE.current&&STATE.current.question)||"").trim(),keys=chosenGenerators();if(!q||!keys.length)return notice("cmpNotice","Choisissez une question et au moins un modèle disponible.","warn");let r=STATE.cmpRetrieval;setBusy(true,"récupération en cours");try{if(!keep||!r){r=await api("/api/eval/retrieval",{method:"POST",body:{question:q,...retrievalOptions()}});STATE.cmpRetrieval=r;}const labels=labelsFor(q,keys.length),map={},box=$("cmpPanels");box.innerHTML="";$("cmpQuestion").textContent=q;STATE.cmpShas={};STATE.cmpExpectedSha=null;STATE.cmpFrozenBase=`top-5 figé · ${$("activeConfig").textContent}`;$("cmpFrozen").textContent=STATE.cmpFrozenBase;const blind=$("cmpBlind").checked,qid=(STATE.current||{}).id||"libre";for(let i=0;i<keys.length;i+=1){const key=keys[i],label=labels[i];map[label]=key;const article=document.createElement("article");article.className="panel cmp-card";article.dataset.label=label;article.innerHTML=`<header><span class="cmp-label">Panneau ${esc(label)}</span><span class="cmp-id" hidden>${esc((STATE.generators.find(g=>g.key===key)||{}).label||key)}</span><span class="status mono">…</span></header><div class="body"><p class="fine">génération ${i+1}/${keys.length} en cours…</p></div>`;box.appendChild(article);notice("cmpNotice",`Génération ${i+1}/${keys.length}…`,"info");await generateInto(article,key,label,q,r,qid,blind);}STATE.cmpMapping=map;STATE.cmpQuestionId=qid;notice("cmpNotice",`Comparaison terminée — ${keys.length} génération(s) séquentielle(s).`,"info");}catch(e){notice("cmpNotice","Retrieval en échec : "+e.message,"error");}finally{setBusy(false);}}
+document.addEventListener("DOMContentLoaded",()=>{$("continueBtn").addEventListener("click",()=>{if(STATE.current)$("questionText").scrollIntoView({behavior:"smooth",block:"center"});});$("prevTop").addEventListener("click",()=>move(-1));$("nextTop").addEventListener("click",()=>move(1));$("scoreNext").addEventListener("click",saveAndNext);$("retrievalProfile").addEventListener("change",updateActiveConfig);$("contextK").addEventListener("change",updateActiveConfig);updateActiveConfig();$("openModes").addEventListener("click",()=>showTab("modes"));$("openLab").addEventListener("click",()=>showTab("lab"));});
+
+const _v21ResumeSession = resumeSession;
+resumeSession = async function(name) { await _v21ResumeSession(name); updateHome(); };
+const _v21BenchmarkChange = onBenchmarkChange;
+onBenchmarkChange = function() { _v21BenchmarkChange(); updateHome(); };

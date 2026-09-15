@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>A²-Med — évaluation &amp; laboratoire (expérimental)</title>
 <meta name="description" content="Plateforme de mesure : runs reproductibles, scoring humain, comparaison de générateurs, trace de retrieval. Aucun usage clinique.">
-<link rel="stylesheet" href="./eval.css?v=a9508640">
+<link rel="stylesheet" href="./eval.css?v=4504da07">
 </head>
 <body data-api="">
 <script>window.A2MED_API_BASE="https://mel-mandate-carter-erik.trycloudflare.com";</script>
@@ -34,14 +34,13 @@
   <p class="sr-only" id="live" role="status" aria-live="polite"></p>
 
   <nav class="tabs" role="tablist" aria-label="Écrans d’évaluation">
-    <button type="button" role="tab" id="tab-run" aria-selected="true" data-tab="run">Runs</button>
+    <button type="button" role="tab" id="tab-run" aria-selected="true" data-tab="run">Benchmark</button>
     <button type="button" role="tab" id="tab-compare" aria-selected="false" data-tab="compare">Comparaison aveugle</button>
-    <button type="button" role="tab" id="tab-modes" aria-selected="false" data-tab="modes">Modes de réponse</button>
-    <button type="button" role="tab" id="tab-lab" aria-selected="false" data-tab="lab">Lab retrieval</button>
   </nav>
+  <section class="panel benchmark-home" id="benchmarkHome"><p class="eyebrow">Benchmark Alexia</p><h1>Une question à la fois.</h1><p id="sessionSummary">Préparation de votre session…</p><button type="button" class="btn primary" id="continueBtn" hidden>Continuer</button></section>
 
   <!-- ------------------------------------------------------ en-tête de session (commun) -->
-  <section class="panel" id="sessionBar" aria-label="Session d’évaluation en cours">
+  <details class="panel setup" id="sessionBar"><summary>Configuration de session et jeux de questions</summary><div class="setup-body">
     <div class="grid-2">
       <div>
         <label class="field-label" for="sessionSelect">Session</label>
@@ -78,17 +77,16 @@
       </select>
       <button type="button" class="btn primary" id="sessionCreate">Créer</button>
     </div>
-    <p class="notice" id="sessionNotice" role="alert" hidden></p>
+    </div><p class="notice" id="sessionNotice" role="alert" hidden></p>
     <div class="session-head" id="sessionHead" hidden></div>
     <p class="danger" id="fingerprintWarn" hidden></p>
-  </section>
+  </details>
 
   <!-- ------------------------------------------------------ 1. runs + scoring -->
   <section class="tab-panel" id="panel-run" data-panel="run" role="tabpanel" aria-labelledby="tab-run">
     <div class="panel">
       <div class="grid-2">
-        <div>
-          <label class="field-label" for="questionSelect">Question du jeu</label>
+        <div class="question-nav"><p class="progress" id="progressCount">—</p><div class="btn-row"><button type="button" class="btn quiet" id="prevTop">← Précédente</button><button type="button" class="btn quiet" id="nextTop">Suivante →</button></div><details class="question-drawer"><summary>Choisir une autre question</summary><label class="field-label" for="questionSelect">Recherche dans le jeu</label>
           <select id="questionSelect" size="8"></select>
           <div class="row">
             <select id="filterState" aria-label="Filtrer par état">
@@ -97,8 +95,7 @@
               <option value="done">revues</option>
             </select>
             <select id="filterCode" aria-label="Filtrer par code d’erreur"><option value="">sans filtre de code</option></select>
-          </div>
-          <p class="fine" id="progressCount">—</p>
+          </div></details>
         </div>
         <div>
           <p class="question-box" id="questionText">Sélectionnez une question.</p>
@@ -106,14 +103,10 @@
           <div class="row">
             <label class="field-label" for="runMode">Mode de réponse</label>
             <select id="runMode">
-              <option value="standard">standard</option>
-              <option value="courte">courte</option>
-              <option value="sources">sources (aucun appel générateur)</option>
+              <option value="courte" selected>Réponse courte</option><option value="standard">Réponse détaillée</option><option value="sources">Sources seulement — sans réponse générée</option>
             </select>
-            <label class="field-label" for="runModel">Modèle (expérimental)</label>
-            <select id="runModel"></select>
-          </div>
-          <div class="btn-row">
+            <label class="field-label" for="runModel">Modèle</label>
+            <select id="runModel"></select></div><div class="row retrieval-controls"><label class="field-label" for="retrievalProfile">Recherche</label><select id="retrievalProfile"><option value="hybrid" selected>Hybride équilibré</option><option value="dense">Sémantique dense</option><option value="bm25">Lexical BM25</option></select><label class="field-label" for="contextK">Contexte</label><select id="contextK"><option value="5" selected>5 passages</option><option value="10">10 passages</option><option value="15">15 passages</option></select><span class="pill" id="activeConfig">hybride équilibré · 5 passages</span></div><div class="btn-row">
             <button type="button" class="btn primary" id="runBtn">Lancer le run</button>
             <button type="button" class="btn quiet" id="labFromRun">Voir la trace retrieval (Lab)</button>
           </div>
@@ -145,7 +138,7 @@
         <button type="button" data-verdict="incorrect" class="v-incorrect">incorrect <kbd>3</kbd></button>
         <button type="button" data-verdict="cannot_assess" class="v-na">ne puis juger <kbd>4</kbd></button>
       </div>
-      <fieldset class="codes">
+      <fieldset class="codes" id="codesField" hidden>
         <legend>Codes d’erreur (plusieurs possibles)</legend>
         <div class="code-list" id="codeList"></div>
       </fieldset>
@@ -153,7 +146,7 @@
       <textarea id="noteBox" rows="3" placeholder="Ce qui manque, ce qui est faux, ce qu’il faudrait vérifier…"></textarea>
       <div class="btn-row">
         <button type="button" class="btn quiet" id="prevBtn">← précédent</button>
-        <button type="button" class="btn quiet" id="nextBtn">suivant →</button>
+        <button type="button" class="btn primary" id="scoreNext">Enregistrer et suivant →</button><button type="button" class="btn quiet" id="nextBtn">suivant →</button>
       </div>
       <p class="fine">Enregistrement automatique à chaque action. <kbd>←</kbd> <kbd>→</kbd> pour naviguer,
         <kbd>1</kbd>–<kbd>4</kbd> pour la décision, <kbd>e</kbd> pour la note, <kbd>Enter</kbd> sur une case pour la cocher.</p>
@@ -185,8 +178,10 @@
     <div class="panels" id="cmpPanels"></div>
   </section>
 
+  <details class="panel research-tools"><summary>Outils de recherche avancés</summary><p class="fine">Ces outils servent à l’exploration ; ils ne font pas partie du flux de benchmark Alexia.</p><div class="btn-row"><button type="button" class="btn quiet" id="openModes">Comparer les formats de réponse</button><button type="button" class="btn quiet" id="openLab">Ouvrir Lab retrieval</button></div></details>
+
   <!-- ------------------------------------------------------ 3. modes de réponse -->
-  <section class="tab-panel" id="panel-modes" data-panel="modes" role="tabpanel" aria-labelledby="tab-modes" hidden>
+  <section class="tab-panel" id="panel-modes" data-panel="modes" role="tabpanel" hidden>
     <div class="panel">
       <p class="fine">Même question, mêmes sources, trois modes de réponse. La comparaison ne
         présume rien : « plus court » n’est pas « mieux », seules vos réponses aux deux questions
@@ -202,7 +197,7 @@
   </section>
 
   <!-- ------------------------------------------------------ 4. Lab retrieval -->
-  <section class="tab-panel" id="panel-lab" data-panel="lab" role="tabpanel" aria-labelledby="tab-lab" hidden>
+  <section class="tab-panel" id="panel-lab" data-panel="lab" role="tabpanel" hidden>
     <div class="panel">
       <p class="fine">Vue <strong>diagnostique</strong> : lignée de chaque candidat (BM25 · dense ·
         RRF · rerank → rang final). Elle n’améliore rien et ne remplace jamais le retrieval de
@@ -237,6 +232,6 @@
   <p class="fine mono" id="footSession">aucune session chargée</p>
 </footer>
 
-<script src="./eval.js?v=d3376347"></script>
+<script src="./eval.js?v=c9d56b2f"></script>
 </body>
 </html>

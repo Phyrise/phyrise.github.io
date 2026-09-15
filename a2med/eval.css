@@ -221,3 +221,4 @@ select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   input, select, textarea { max-width: 100%; }
   pre { overflow-wrap: anywhere; white-space: pre-wrap; }
 }
+.benchmark-home { border-left: 5px solid var(--accent); } .benchmark-home h1 { margin: 0; font-size: 23px; } .eyebrow { margin: 0; color: var(--accent-dark); font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; } .setup > summary, .research-tools > summary, .question-drawer > summary { cursor: pointer; font-weight: 650; } .setup-body { margin-top: 10px; } .question-nav { background: #f7f9fb; border: 1px solid var(--line); border-radius: 9px; padding: 10px; } .progress { margin: 0; font-weight: 650; } .question-drawer { margin-top: 10px; } .retrieval-controls { border-top: 1px solid var(--line); padding-top: 8px; } .research-tools { background: #fafbfc; } @media (max-width:720px) { .retrieval-controls .pill { flex: 1 1 100%; } }
