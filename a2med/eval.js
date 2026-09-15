@@ -166,7 +166,10 @@ function onBenchmarkChange() {
   const sha = name === "__combine__"
     ? STATE.benchmarks.map((b) => `${b.name}@${String(b.sha256).slice(0, 8)}`).join(" + ")
     : (STATE.benchmarksByName[name] || {}).sha256 || "—";
-  $("benchSha").textContent = `SHA : ${sha}`;
+  // 16 caractères + ellipse : le SHA complet ne sert ici qu'à identifier le jeu
+  // (le verrou est par SHA complet côté session), une chaîne mono de 64 caractères
+  // cassait la mise en page à 360–430 px.
+  $("benchSha").textContent = `SHA : ${String(sha).slice(0, 16)}…`;
   $("benchCount").textContent = `${qs.length} questions`;
   if (STATE.session && STATE.session.benchmark !== name) {
     notice("sessionNotice", `La session est figée sur le jeu « ${STATE.session.benchmark} » `

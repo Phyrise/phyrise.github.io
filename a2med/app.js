@@ -342,7 +342,13 @@ function selectedMode() {
 }
 
 function selectedModel() {
-  return document.querySelector('input[name="model"]:checked')?.value || null;
+  // Sélecteur caché (pas d'options expérimentales configurées) : on n'envoie
+  // JAMAIS de champ model — le défaut du pipeline (flash) s'applique. La radio
+  // reste cochée côté DOM (valeur « flash ») mais n'a aucun effet tant que le
+  // sélecteur est masqué.
+  if (document.getElementById("modelPicker").hidden) return null;
+  const v = document.querySelector('input[name="model"]:checked')?.value || null;
+  return v === "flash" ? null : v;
 }
 
 function updateMode() {

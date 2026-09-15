@@ -198,4 +198,21 @@ select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   .wrap { padding: 0 12px 24px; }
   .code-list { grid-template-columns: 1fr; }
   select[size] { min-width: 100%; }
+  /* 360–430 px : rien ne doit forcer la page au-delà du viewport. Les longues
+     chaînes mono (SHA, passage_id, prompt) passent en wrap au lieu d'élargir
+     le document — c'est un débordement mono qui rendait la page « non repliée »
+     et dézoomable. Les tables de lignée continuent de défiler dans leur .table-wrap. */
+  code, .mono { overflow-wrap: anywhere; }
+  .fine.mono, .kv, #benchSha, .session-head, #footSession, .pill { overflow-wrap: anywhere; }
+  .refs { white-space: normal; }
+  .table-wrap td code { overflow-wrap: anywhere; }
+  .tabs { gap: 4px; }
+  .tabs button { flex: 1 1 auto; min-width: 0; padding: 8px 10px; }
+  .row { gap: 6px; }
+  .row select, .row input[type=text] { flex: 1 1 100%; }
+  .btn-row { flex-wrap: wrap; }
+  .btn-row .btn { flex: 1 1 auto; min-width: 0; }
+  .verdicts button { flex: 1 1 42%; }
+  input, select, textarea { max-width: 100%; }
+  pre { overflow-wrap: anywhere; white-space: pre-wrap; }
 }
