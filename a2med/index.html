@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>A²-Med — essai profondeur du contexte</title>
+<title>A²-Med — réponses médicales sourcées</title>
 <meta name="description" content="Question médicale, réponse française citée, extraite des recommandations SpILF locales.">
-<link rel="stylesheet" href="./style.css?v=707f252">
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <div id="passwordGate" class="password-gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
@@ -26,12 +26,13 @@
 
 <header class="masthead">
   <div class="wrap mast-top">
-    <p class="brand">A²-Med <span class="fine">· version expérimentale</span></p>
+    <p class="brand">A²-Med</p>
     <p class="state" id="health" role="status" aria-live="polite">
       <span class="state-dot" aria-hidden="true"></span>
       <span id="healthText">vérification du service…</span>
       <button type="button" class="state-retry" id="healthRefresh" hidden>ré-essayer</button>
     </p>
+    <a class="mode-link mode-link-eval" href="./eval">Eval &amp; Lab</a>
   </div>
 </header>
 
@@ -57,17 +58,8 @@
       </div>
       <p class="fine" id="modeHint"></p>
     </fieldset>
-    <fieldset class="model-picker" id="depthPicker" aria-describedby="depthHint">
-      <legend>Profondeur expérimentale</legend>
-      <div class="model-options">
-        <label><input type="radio" name="depth" value="5" checked><span>5<small>référence</small></span></label>
-        <label><input type="radio" name="depth" value="10"><span>10<small>essai</small></span></label>
-        <label><input type="radio" name="depth" value="15"><span>15<small>essai</small></span></label>
-      </div>
-      <p class="fine" id="depthHint">Nombre de passages remis au générateur. Même recette de recherche ; deux entrées corrompues exclues du pool expérimental.</p>
-    </fieldset>
     <fieldset class="model-picker" id="modelPicker" hidden aria-describedby="modelHint">
-      <legend>Modèle de test</legend>
+      <legend>Modèle de test — expérimental</legend>
       <div class="model-options">
         <label><input type="radio" name="model" value="flash" checked><span>Qwen Flash<small>pipeline</small></span></label>
         <label><input type="radio" name="model" value="qwen9b"><span>Qwen 9B<small>test</small></span></label>
@@ -104,6 +96,7 @@
         <span class="answer-meaning" id="statusMeaning"></span>
         <span class="answer-time mono" id="answerTime"></span>
       </header>
+      <p class="provisional-banner" id="provisionalBanner" hidden></p>
       <div id="answer"></div>
       <div id="limits" hidden></div>
     </article>
@@ -147,8 +140,7 @@
   <p class="fine mono" id="fingerprint"></p>
 </footer>
 
-<script>window.A2MED_API_BASE="";</script>
-<script>window.A2MED_API_BASE="https://accent-intent-imagine-marker.trycloudflare.com";</script>
-<script src="./app.js?v=707f252"></script>
+<script>window.A2MED_API_BASE="https://mel-mandate-carter-erik.trycloudflare.com";</script>
+<script src="./app.js?v=b8e74406"></script>
 </body>
 </html>

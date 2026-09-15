@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A²-Med — évaluation &amp; laboratoire (expérimental)</title>
+<meta name="description" content="Plateforme de mesure : runs reproductibles, scoring humain, comparaison de générateurs, trace de retrieval. Aucun usage clinique.">
+<link rel="stylesheet" href="./eval.css?v=d3b6d19c">
+</head>
+<body data-api="">
+<script>window.A2MED_API_BASE="https://mel-mandate-carter-erik.trycloudflare.com";</script>
+
+<header class="masthead">
+  <div class="wrap mast-top">
+    <p class="brand">A²-Med <span class="tag-exp">Eval &amp; Lab — expérimental</span></p>
+    <p class="state" id="health" role="status" aria-live="polite">
+      <span class="state-dot" aria-hidden="true"></span>
+      <span id="healthText">vérification du service…</span>
+    </p>
+    <a class="mode-link" href="./">Interface normale</a>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <p class="warn-panel" id="usageWarn">
+    <strong>Zone de mesure, pas de soin.</strong> Ces écrans servent à comparer des options de
+    pipeline et à recueillir un avis humain. Ils ne remplacent pas l’interface normale, ne sont
+    pas validés cliniquement et ne doivent pas servir à répondre à un patient. Les jeux de
+    questions ne contiennent <strong>aucune réponse attendue</strong> ; le raisonnement interne
+    du modèle n’est jamais affiché.
+  </p>
+
+  <p class="sr-only" id="live" role="status" aria-live="polite"></p>
+
+  <nav class="tabs" role="tablist" aria-label="Écrans d’évaluation">
+    <button type="button" role="tab" id="tab-run" aria-selected="true" data-tab="run">Runs</button>
+    <button type="button" role="tab" id="tab-compare" aria-selected="false" data-tab="compare">Comparaison aveugle</button>
+    <button type="button" role="tab" id="tab-modes" aria-selected="false" data-tab="modes">Modes de réponse</button>
+    <button type="button" role="tab" id="tab-lab" aria-selected="false" data-tab="lab">Lab retrieval</button>
+  </nav>
+
+  <!-- ------------------------------------------------------ en-tête de session (commun) -->
+  <section class="panel" id="sessionBar" aria-label="Session d’évaluation en cours">
+    <div class="grid-2">
+      <div>
+        <label class="field-label" for="sessionSelect">Session</label>
+        <div class="row">
+          <select id="sessionSelect" aria-describedby="sessionHelp"></select>
+          <button type="button" class="btn quiet" id="sessionResume">Reprendre</button>
+          <button type="button" class="btn quiet" id="sessionRename" disabled>Renommer</button>
+          <button type="button" class="btn quiet danger" id="sessionReset" disabled>Repartir à zéro</button>
+        </div>
+        <p class="fine" id="sessionHelp">Créer une session fige le SHA du jeu : si le fichier change, les écritures sont bloquées.</p>
+      </div>
+      <div>
+        <label class="field-label" for="benchSelect">Jeu de questions</label>
+        <div class="row">
+          <select id="benchSelect" aria-describedby="benchHelp"></select>
+          <span class="pill" id="benchCount">—</span>
+        </div>
+        <p class="fine mono" id="benchSha">SHA : —</p>
+        <div class="row">
+          <input id="importName" type="text" maxlength="64" placeholder="import-mon-jeu.jsonl" aria-label="Nom du fichier à importer">
+          <label class="check"><input type="checkbox" id="importOverwrite"> remplacer</label>
+          <button type="button" class="btn quiet" id="importBtn">Importer (JSON/JSONL/CSV)</button>
+          <input type="file" id="importFile" accept=".json,.jsonl,.csv,text/plain" hidden>
+        </div>
+      </div>
+    </div>
+    <div class="row wrap-row">
+      <label class="field-label" for="newSessionName">Nouvelle session</label>
+      <input id="newSessionName" type="text" maxlength="64" placeholder="2026-09-15-flash-standard">
+      <select id="newSessionMode" aria-label="Mode de réponse de la session">
+        <option value="standard">standard</option>
+        <option value="courte">courte</option>
+        <option value="sources">sources (sans génération)</option>
+      </select>
+      <button type="button" class="btn primary" id="sessionCreate">Créer</button>
+    </div>
+    <p class="notice" id="sessionNotice" role="alert" hidden></p>
+    <div class="session-head" id="sessionHead" hidden></div>
+    <p class="danger" id="fingerprintWarn" hidden></p>
+  </section>
+
+  <!-- ------------------------------------------------------ 1. runs + scoring -->
+  <section class="tab-panel" id="panel-run" data-panel="run" role="tabpanel" aria-labelledby="tab-run">
+    <div class="panel">
+      <div class="grid-2">
+        <div>
+          <label class="field-label" for="questionSelect">Question du jeu</label>
+          <select id="questionSelect" size="8"></select>
+          <div class="row">
+            <select id="filterState" aria-label="Filtrer par état">
+              <option value="">toutes</option>
+              <option value="todo">en attente</option>
+              <option value="done">revues</option>
+            </select>
+            <select id="filterCode" aria-label="Filtrer par code d’erreur"><option value="">sans filtre de code</option></select>
+          </div>
+          <p class="fine" id="progressCount">—</p>
+        </div>
+        <div>
+          <p class="question-box" id="questionText">Sélectionnez une question.</p>
+          <p class="fine" id="questionMeta"></p>
+          <div class="row">
+            <label class="field-label" for="runMode">Mode de réponse</label>
+            <select id="runMode">
+              <option value="standard">standard</option>
+              <option value="courte">courte</option>
+              <option value="sources">sources (aucun appel générateur)</option>
+            </select>
+            <label class="field-label" for="runModel">Modèle (expérimental)</label>
+            <select id="runModel"></select>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn primary" id="runBtn">Lancer le run</button>
+            <button type="button" class="btn quiet" id="labFromRun">Voir la trace retrieval (Lab)</button>
+          </div>
+          <p class="notice" id="runNotice" role="alert" hidden></p>
+        </div>
+      </div>
+    </div>
+
+    <article class="panel" id="runCard" hidden>
+      <header class="answer-head">
+        <span class="answer-code mono" id="runStatus"></span>
+        <span class="answer-meaning" id="runMeaning"></span>
+        <span class="answer-time mono" id="runTime"></span>
+      </header>
+      <p class="provisional-banner" id="runProvisional" hidden></p>
+      <div id="runAnswer"></div>
+      <div id="runSources"></div>
+      <details class="tech" id="runTechBox">
+        <summary>Détails techniques (repli, pas affichés par défaut)</summary>
+        <div id="runTech"></div>
+      </details>
+    </article>
+
+    <section class="panel scoring" id="scoring" hidden aria-label="Scoring humain">
+      <p class="fine" id="scoreSaved"></p>
+      <div class="verdicts" role="group" aria-label="Décision principale">
+        <button type="button" data-verdict="correct" class="v-correct">correct <kbd>1</kbd></button>
+        <button type="button" data-verdict="partial" class="v-partial">partiel <kbd>2</kbd></button>
+        <button type="button" data-verdict="incorrect" class="v-incorrect">incorrect <kbd>3</kbd></button>
+        <button type="button" data-verdict="cannot_assess" class="v-na">ne puis juger <kbd>4</kbd></button>
+      </div>
+      <fieldset class="codes">
+        <legend>Codes d’erreur (plusieurs possibles)</legend>
+        <div class="code-list" id="codeList"></div>
+      </fieldset>
+      <label class="field-label" for="noteBox">Note libre <kbd>e</kbd></label>
+      <textarea id="noteBox" rows="3" placeholder="Ce qui manque, ce qui est faux, ce qu’il faudrait vérifier…"></textarea>
+      <div class="btn-row">
+        <button type="button" class="btn quiet" id="prevBtn">← précédent</button>
+        <button type="button" class="btn quiet" id="nextBtn">suivant →</button>
+      </div>
+      <p class="fine">Enregistrement automatique à chaque action. <kbd>←</kbd> <kbd>→</kbd> pour naviguer,
+        <kbd>1</kbd>–<kbd>4</kbd> pour la décision, <kbd>e</kbd> pour la note, <kbd>Enter</kbd> sur une case pour la cocher.</p>
+    </section>
+  </section>
+
+  <!-- ------------------------------------------------------ 2. comparaison aveugle -->
+  <section class="tab-panel" id="panel-compare" data-panel="compare" role="tabpanel" aria-labelledby="tab-compare" hidden>
+    <div class="panel">
+      <p class="question-box" id="cmpQuestion">Sélectionnez une question dans l’onglet Runs (ou saisissez-la).</p>
+      <label class="field-label" for="cmpFree">Question libre</label>
+      <textarea id="cmpFree" rows="2" placeholder="Facultatif : écrase la question sélectionnée."></textarea>
+      <p class="fine">Le retrieval est lancé <strong>une seule fois</strong> (mode sources, aucun appel
+        générateur), le top-5 est figé puis rejoué pour chaque générateur avec le même prompt.
+        L’étiquette A/B/C/D est tirée au sort et l’identité reste masquée jusqu’au scoring.</p>
+      <div class="row wrap-row" id="cmpGenerators"></div>
+      <div class="row">
+        <label class="field-label" for="cmpMode">Mode</label>
+        <select id="cmpMode"><option value="standard">standard</option><option value="courte">courte</option></select>
+        <label class="check"><input type="checkbox" id="cmpBlind"> aveugle (identités masquées)</label>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn primary" id="cmpRun">Relancer retrieval + génération</button>
+        <button type="button" class="btn quiet" id="cmpRegen">Rejouer la génération seulement (top-5 figé)</button>
+      </div>
+      <p class="notice" id="cmpNotice" role="alert" hidden></p>
+      <p class="fine mono" id="cmpFrozen"></p>
+    </div>
+    <div class="panels" id="cmpPanels"></div>
+  </section>
+
+  <!-- ------------------------------------------------------ 3. modes de réponse -->
+  <section class="tab-panel" id="panel-modes" data-panel="modes" role="tabpanel" aria-labelledby="tab-modes" hidden>
+    <div class="panel">
+      <p class="fine">Même question, mêmes sources, trois modes de réponse. La comparaison ne
+        présume rien : « plus court » n’est pas « mieux », seules vos réponses aux deux questions
+        humaines comptent.</p>
+      <div class="row">
+        <label class="field-label" for="modeFree">Question</label>
+        <input id="modeFree" type="text" maxlength="500" placeholder="Vide = question sélectionnée dans Runs">
+      </div>
+      <div class="btn-row"><button type="button" class="btn primary" id="modeRun">Sources → courte → standard</button></div>
+      <p class="notice" id="modeNotice" role="alert" hidden></p>
+    </div>
+    <div class="panels" id="modePanels"></div>
+  </section>
+
+  <!-- ------------------------------------------------------ 4. Lab retrieval -->
+  <section class="tab-panel" id="panel-lab" data-panel="lab" role="tabpanel" aria-labelledby="tab-lab" hidden>
+    <div class="panel">
+      <p class="fine">Vue <strong>diagnostique</strong> : lignée de chaque candidat (BM25 · dense ·
+        RRF · rerank → rang final). Elle n’améliore rien et ne remplace jamais le retrieval de
+        production. Le Lab relance un run complet avec <code>--stage1-out</code> (drapeau déjà
+        exporté par le code gelé) pour lire les ordres complets du pool.</p>
+      <div class="row">
+        <label class="field-label" for="labQuestion">Question</label>
+        <input id="labQuestion" type="text" maxlength="2000">
+        <button type="button" class="btn primary" id="labRun">Tracer le retrieval</button>
+      </div>
+      <p class="notice" id="labNotice" role="alert" hidden></p>
+      <p class="fine mono" id="labMeta"></p>
+      <div class="row"><label class="check"><input type="checkbox" id="labExcluded"> n’afficher que les exclus du top-5</label></div>
+    </div>
+    <section class="panel" id="labFinal" hidden>
+      <h2 class="section-title">Top-5 final (contexte remis au générateur)</h2>
+      <div id="labFinalTable"></div>
+    </section>
+    <section class="panel" id="labLineage" hidden>
+      <h2 class="section-title">Lignée des 50 fusionnés</h2>
+      <div id="labLineageTable"></div>
+    </section>
+    <section class="panel" id="labOrders" hidden>
+      <h2 class="section-title">Ordres bruts du pool (top-10, diagnostique)</h2>
+      <div id="labOrdersTables"></div>
+    </section>
+  </section>
+
+</main>
+
+<footer class="wrap site-foot">
+  <p class="fine mono" id="footSession">aucune session chargée</p>
+</footer>
+
+<script src="./eval.js?v=52027d97"></script>
+</body>
+</html>

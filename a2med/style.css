@@ -182,6 +182,15 @@ summary:focus-visible, .state-retry:focus-visible, .hist:focus-visible {
 .src-meta { margin: 4px 0 0; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap;
   gap: 4px 10px; }
 .src-meta .mono { font-size: 12px; overflow-wrap: anywhere; }
+/* Statut de source lu du registre (bandeau + badges) : calcule par le produit, jamais par le LLM. */
+.provisional-banner { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--cond-line);
+  border-radius: 10px; background: var(--cond-bg); color: var(--cond); font-size: 14.5px;
+  line-height: 1.45; }
+.provisional-banner .fine { display: block; color: var(--ink-2); }
+.badge-prov { display: inline-block; padding: 1px 8px; border: 1px solid var(--cond-line);
+  border-radius: 999px; background: var(--cond-bg); color: var(--cond); font-weight: 650;
+  font-size: 12.5px; }
+.source.is-provisional { border-left: 3px solid var(--cond-line); padding-left: 10px; }
 .excerpt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14.5px; margin: 9px 0 0;
   color: var(--ink-2); }
 .more { margin-top: 6px; }

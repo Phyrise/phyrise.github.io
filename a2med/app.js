@@ -1,8 +1,6 @@
 const API_BASE = String(window.A2MED_API_BASE || "").replace(/\/$/, "");
 const apiFetch = (path, init = {}) => {
   const headers = new Headers(init.headers || {});
-  const session = sessionStorage.getItem("a2med_proxy_session");
-  if (session) headers.set("X-A2Med-Session", session);
   return fetch(API_BASE + path, { ...init, headers, credentials: "include" });
 };
 const gate = document.getElementById("passwordGate");
@@ -18,18 +16,15 @@ async function unlock() {
       credentials: "include",
       body: JSON.stringify({password: passwordInput.value})
     });
-    const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error("bad password");
-    if (payload.session) sessionStorage.setItem("a2med_proxy_session", payload.session);
     sessionStorage.setItem("a2med_test_unlocked", "1");
     gate.remove();
-    checkHealth();
   } catch {
     passwordError.hidden = false;
     passwordInput.select();
   }
 }
-// The server, not a cached unlocked flag, decides whether a session is valid.
+if (sessionStorage.getItem("a2med_test_unlocked") === "1") gate.remove();
 passwordForm.addEventListener("submit", event => { event.preventDefault(); unlock(); });
 if (gate.isConnected) passwordInput.focus();
 
@@ -45,9 +40,9 @@ const rich = (s) => esc(s).replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
 
 const HIST = 'a2med_ui_v1_history';
 
-/* Candidate contract: this UI uses the single validated response route. The candidate
-   API does not advertise a streaming contract, so no provisional model text is shown. */
-const USE_STREAM = false;
+/* Route de streaming. `false` = approche B : plus aucun token n’est affiché, la page
+   revient à la requête unique /api/ask (le flux reste utilisable côté serveur). */
+const USE_STREAM = true;
 /* Le brouillon n’est JAMAIS une réponse : il est étiqueté, tenu à l’écart de la carte
    validée, et effacé quand la validation conclut à l’abstention ou échoue. */
 const DRAFT = {
@@ -90,15 +85,8 @@ async function checkHealth() {
   if (busy) return;                                      // le daemon sérialise : ne sonde pas
   try {
     const r = await apiFetch('/api/health');
-    if (r.status === 401) {
-      sessionStorage.removeItem('a2med_proxy_session');
-      if (!gate.isConnected) document.body.append(gate);
-      setPill('indisponible', 'Connexion requise', 'Saisissez le mot de passe pour accéder au prototype.');
-      return;
-    }
     const h = await r.json();
     if (!r.ok) throw new Error(String(r.status));
-    if (gate.isConnected) gate.remove();
     maxQ = (h.limits && h.limits.question_chars) || MAXQ_DEFAULT;
     modelOptions = h.model_options || {};
     $("modelPicker").hidden = Object.keys(modelOptions).length < 2;
@@ -106,7 +94,7 @@ async function checkHealth() {
     countChars();
     const gen = h.generator || {}, gpu = h.gpu0 || {};
     const detail = [`gpu0 ${gpu.mem_used_mib ?? '?'} MiB`, `${h.n_pool ?? '?'} passages retenus`,
-      `génératrice ${gen.ok === true ? 'disponible' : gen.ok === false ? 'indisponible' : 'configurée, disponibilité non sondée'}`,
+      `génératrice ${gen.ok ? 'ok' : 'indisponible'}`,
       h.corpus_fingerprint ? `empreinte ${String(h.corpus_fingerprint).slice(0, 8)}` : '']
       .filter(Boolean).join(' · ');
     $('fingerprint').textContent = h.corpus_fingerprint
@@ -130,7 +118,7 @@ async function checkHealth() {
     setPill('pret', 'Serveur Sparka', detail);
   } catch {
     setPill('indisponible', 'Service indisponible',
-      'La page n’a pas pu joindre le service. Réessayez dans quelques instants.');
+      'La page n’a pas pu joindre le service local (port 8050).');
   }
 }
 
@@ -147,16 +135,38 @@ function chips(refs) {
     : '';
 }
 
+/* Autorités et statut de source : lus du registre (payload), jamais du modèle. Sans source_meta
+   (corpus v6.1) societies est vide -> libellé actuel « corpus SPILF », aucun bandeau. */
+function corpusLabel(data) {
+  const auth = [...new Set((data.sources || []).flatMap((s) => s.societies || []))];
+  return auth.length ? `d’après corpus ${auth.join(' · ')}` : 'd’après corpus SPILF';
+}
+
+function renderProvisional(data) {
+  const banner = $('provisionalBanner');
+  const prov = (data.sources || []).filter((s) => s.source_status === 'prepublication_recommendation');
+  banner.hidden = !prov.length;
+  if (!prov.length) return;
+  const who = [...new Set(prov.flatMap((s) => s.societies || []))].join(' / ');
+  const where = [...new Set(prov.map((s) => s.event).filter(Boolean))].join(', ');
+  const detail = who ? ` — ${who}${where ? ` (${where})` : ''} : support présenté en congrès, ` : ' : ';
+  banner.innerHTML = '<strong>Inclut une recommandation pré-publication / en cours de finalisation</strong>'
+    + `<span class="fine">${esc(detail)}pas encore la version finale publiée en rubrique officielle. `
+      + 'À ne pas citer comme une recommandation définitive.</span>';
+}
+
 function renderAnswer(data) {
   const total = data.timings && Number.isFinite(data.timings.t_total_s)
     ? ` · ${data.timings.t_total_s.toFixed(1)} s` : '';
   if (data.source_only) {
     $('answerCard').dataset.status = 'SOURCES_ONLY';
     $('statusCode').textContent = 'SOURCES';
-    $('statusMeaning').textContent = 'd’après corpus SPILF';
+    $('statusMeaning').textContent = corpusLabel(data);
     $('answerTime').textContent = `Recherche${total}`;
-    $('answer').innerHTML = '<p>Les passages ci-dessous sont les résultats du retrieval. '
-      + 'Aucune synthèse n’a été générée dans cette instance expérimentale.</p>';
+    renderProvisional(data);
+    $('answer').innerHTML = '<p>Les passages ci-dessous sont les cinq résultats du retrieval. '
+      + 'Aucune synthèse n’a été générée.</p>'
+      + '<button type="button" class="btn primary" id="synthBtn">Synthétiser ces sources</button>';
     $('limits').hidden = true;
     $('copyAllBtn').hidden = true;
     return;
@@ -165,8 +175,9 @@ function renderAnswer(data) {
   const [label, meaning] = STATUS[code];
   $('answerCard').dataset.status = code;
   $('statusCode').textContent = label;
-  $('statusMeaning').textContent = 'd’après corpus SPILF';
+  $('statusMeaning').textContent = corpusLabel(data);
   $('answerTime').textContent = `Réponse${total}`;
+  renderProvisional(data);
 
   const claims = data.answer || [];
   if (code === 'ABSTENTION' || !claims.length) {
@@ -223,14 +234,16 @@ function renderSources(data) {
   $('sourcesPanel').hidden = !src.length;
   $('sourcesTitle').textContent = data.source_only
     ? `Passages retrouvés — sans synthèse (${src.length})`
-    : data.technique?.experimental_depth
-      ? `Passages transmis au générateur (${src.length})`
-      : `Sources citées (${src.length})`;
+    : `Sources citées (${src.length})`;
   $('sources').innerHTML = src.map((s, index) => {
     const ex = String(s.excerpt ?? '');
-    return `<article class="source">
+    const prov = s.source_status === 'prepublication_recommendation'
+      ? `<span class="badge-prov">Provisoire${s.event ? ` (${esc(s.event)})` : ''}</span>` : '';
+    const auth = (s.societies && s.societies.length ? s.societies : [s.source_authority || 'SPILF'])
+      .map((a) => `<span>${esc(a)}</span>`).join('');
+    return `<article class="source${prov ? ' is-provisional' : ''}">
       <h3 class="src-title"><span class="ref">${esc(s.ref)}</span> ${esc(humanDoc(s.document))}</h3>
-      <p class="src-meta"><span>SPILF</span><span>${esc(sourceYear(s.document))}</span>
+      <p class="src-meta">${prov}${auth}<span>${esc(sourceYear(s.document))}</span>
         <span>${esc(sourceType(s.document))}</span><span>Page/diapositive ${esc(s.page)}</span>
         ${data.source_only ? `<span>Rang ${index + 1}/${src.length}</span>` : ''}</p>
       <p class="excerpt">${rich(ex)}</p>
@@ -276,8 +289,7 @@ function render(data) {
   renderAnswer(data);
   renderSources(data);
   renderTech(data);
-  // L'essai n'expose pas de synthèse depuis un résultat Sources : cela garantirait
-  // une réutilisation exacte des passages, qui n'est pas implémentée dans cette façade.
+  if (data.source_only && $('synthBtn')) $('synthBtn').onclick = synthesizeSources;
 }
 
 /* ------------------------------------------------------------ erreurs (français, sobre) */
@@ -314,10 +326,6 @@ function selectedMode() {
 
 function selectedModel() {
   return document.querySelector('input[name="model"]:checked')?.value || null;
-}
-
-function selectedDepth() {
-  return Number(document.querySelector('input[name="depth"]:checked')?.value || 5);
 }
 
 function updateMode() {
@@ -401,7 +409,7 @@ async function askStream(q, mode = selectedMode(), sourceToken = null) {
      sortie de rendu et puisse retomber sur /api/ask si le flux n'existe pas. */
   const r = await apiFetch('/api/ask/stream', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question: q, mode, depth: selectedDepth(), ...(selectedModel() ? { model: selectedModel() } : {}), ...(sourceToken ? { source_token: sourceToken } : {}) }) });
+    body: JSON.stringify({ question: q, mode, ...(selectedModel() ? { model: selectedModel() } : {}), ...(sourceToken ? { source_token: sourceToken } : {}) }) });
   if (!r.ok) {
     let data = {};
     try { data = await r.json(); } catch { /* réponse vide */ }
@@ -439,10 +447,10 @@ async function askStream(q, mode = selectedMode(), sourceToken = null) {
 
 async function askClassic(q, mode = selectedMode(), sourceToken = null) {
   setStep(-1);
-  $('progressNote').innerHTML = 'Recherche des sources et préparation du résultat en cours… <span id="elapsed"></span>';
+  $('progressNote').innerHTML = 'Calcul en cours ; les étapes en direct sont indisponibles. <span id="elapsed"></span>';
   const r = await apiFetch('/api/ask', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question: q, mode, depth: selectedDepth(), ...(selectedModel() ? { model: selectedModel() } : {}), ...(sourceToken ? { source_token: sourceToken } : {}) }) });
+    body: JSON.stringify({ question: q, mode, ...(selectedModel() ? { model: selectedModel() } : {}), ...(sourceToken ? { source_token: sourceToken } : {}) }) });
   let data = {};
   try { data = await r.json(); } catch { /* réponse vide : on garde le message générique */ }
   if (!r.ok) {
@@ -530,7 +538,7 @@ async function ask() {
       render(res.data);
       say(`Résultat prêt. ${res.data.source_only ? 'Passages retrouvés sans synthèse.' :
         STATUS[code][1]} ` +
-        `${(res.data.sources || []).length} passage(s) consultable(s).`);
+        `${(res.data.sources || []).length} source(s) citée(s).`);
       remember(q, res.data.status);
     }
   } catch {
@@ -610,9 +618,6 @@ function countChars() {
 }
 
 document.querySelectorAll('input[name="mode"]').forEach(el => el.addEventListener('change', updateMode));
-document.querySelectorAll('input[name="depth"]').forEach(el => el.addEventListener('change', () => {
-  $('depthHint').textContent = `Profondeur sélectionnée : ${selectedDepth()} passages. La prochaine question l'utilisera.`;
-}));
 updateMode();
 
 $('askForm').addEventListener('submit', (e) => { e.preventDefault(); ask(); });
