@@ -205,6 +205,11 @@ select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   code, .mono { overflow-wrap: anywhere; }
   .fine.mono, .kv, #benchSha, .session-head, #footSession, .pill { overflow-wrap: anywhere; }
   .refs { white-space: normal; }
+  /* « Détails techniques » (kv-table) : un libellé long (ex. « modalités citant un passage
+     hors contexte ») en nowrap imposait au tableau une largeur minimale de 323 px, donc la
+     page débordait du viewport de 3 px à 360 px et de 43 px à 320 px (mesuré). Les libellés
+     peuvent se replier ici ; les tables de lignée gardent leur défilement interne. */
+  .kv-table th { white-space: normal; }
   .table-wrap td code { overflow-wrap: anywhere; }
   .tabs { gap: 4px; }
   .tabs button { flex: 1 1 auto; min-width: 0; padding: 8px 10px; }
