@@ -194,7 +194,11 @@ select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .site-foot { border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); }
 
 @media (max-width: 720px) {
-  .grid-2 { grid-template-columns: 1fr; }
+  /* `1fr` = `minmax(auto,1fr)` : la colonne était tirée à la min-content de son contenu
+     (350 px mesurés) et faisait déborder LA PAGE de 17 px à 360 px et de 57 px à 320 px.
+     `minmax(0,1fr)` + `min-width:0` sur les enfants : rien ne peut plus élargir le document. */
+  .grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .grid-2 > * { min-width: 0; max-width: 100%; }
   .wrap { padding: 0 12px 24px; }
   .code-list { grid-template-columns: 1fr; }
   select[size] { min-width: 100%; }
@@ -215,6 +219,7 @@ select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   .tabs button { flex: 1 1 auto; min-width: 0; padding: 8px 10px; }
   .row { gap: 6px; }
   .row select, .row input[type=text] { flex: 1 1 100%; }
+  .btn-row select { flex: 1 1 100%; min-width: 0; max-width: 100%; }
   .btn-row { flex-wrap: wrap; }
   .btn-row .btn { flex: 1 1 auto; min-width: 0; }
   .verdicts button { flex: 1 1 42%; }
@@ -222,3 +227,9 @@ select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   pre { overflow-wrap: anywhere; white-space: pre-wrap; }
 }
 .benchmark-home { border-left: 5px solid var(--accent); } .benchmark-home h1 { margin: 0; font-size: 23px; } .eyebrow { margin: 0; color: var(--accent-dark); font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; } .setup > summary, .research-tools > summary, .question-drawer > summary { cursor: pointer; font-weight: 650; } .setup-body { margin-top: 10px; } .question-nav { background: #f7f9fb; border: 1px solid var(--line); border-radius: 9px; padding: 10px; } .progress { margin: 0; font-weight: 650; } .question-drawer { margin-top: 10px; } .retrieval-controls { border-top: 1px solid var(--line); padding-top: 8px; } .research-tools { background: #fafbfc; } @media (max-width:720px) { .retrieval-controls .pill { flex: 1 1 100%; } }
+
+/* Écran « Questions libres » : la page ne doit rien montrer du flux benchmark (carte
+   d'accueil, configuration de session figée au SHA, outils d'exploration) — ces trois blocs
+   vivent hors des panneaux d'onglets et restaient visibles au-dessus des questions libres. */
+body[data-tab="free"] #benchmarkHome, body[data-tab="free"] #sessionBar,
+body[data-tab="free"] .research-tools { display: none; }

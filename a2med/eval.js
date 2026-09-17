@@ -15,7 +15,17 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const rich = (s) => esc(s).replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
 const fmt = (v, d = 2) => (typeof v === "number" ? v.toFixed(d) : "—");
-const LS = { labels: "a2med_eval_labels_v1", last: "a2med_eval_last_session_v1" };
+const LS = { labels: "a2med_eval_labels_v1", last: "a2med_eval_last_session_v1",
+             free: "a2med_free_session_v1", freeBench: "a2med_free_last_question_v1" };
+const STATUS_LABELS = {
+  ANSWER: ["Réponse", "fondée sur les sources locales"],
+  CONDITIONAL_ANSWER: ["Réponse conditionnelle", "partielle ou à conditions — lire les limites"],
+  ABSTENTION: ["ABSTENTION", "le système ne répond pas avec les preuves locales"],
+  SOURCES_ONLY: ["Recherche documentaire", "aucune réponse générée"],
+  INCONNU: ["statut non reconnu", "rien n'affiché faute de statut lisible"],
+};
+// Libellés français des codes d'erreur (les CODES restent la clé stable des agrégats).
+const TAXONOMY_LABELS = { RETRIEVAL_MISS: "Source pertinente absente", RERANKER_DROP: "Source écartée au classement", GENERATOR_OMISSION: "Élément important oublié", GENERATOR_OVERGENERALIZATION: "Réponse trop générale", IMPORTANT_CONDITION_MISSING: "Condition importante manquante", INCORRECT_FACT: "Fait incorrect", INAPPROPRIATE_ABSTENTION: "Abstention injustifiée", SHOULD_HAVE_ABSTAINED: "Aurait dû s’abstenir", EXCESSIVE_DETAIL: "Trop détaillé", SOURCE_PROVENANCE_ISSUE: "Problème de source", CITATION_SUPPORT_ISSUE: "Citation insuffisante", GOLD_PROBLEM: "Problème de référence", QUESTION_AMBIGUOUS: "Question ambiguë", OTHER: "Autre", APPLICABILITY_MISMATCH: "Cadre / population non applicable", CORPUS_GAP: "Corpus probablement muet", ANSWER_IMPRECISE: "Réponse pas assez précise" };
 
 const STATE = {
   health: null, benchmarks: [], benchmarksByName: {}, generators: [], taxonomy: [],
@@ -108,6 +118,7 @@ function sessionHead() {
     ["HEAD git", `<code>${esc(h.git_head || s.git_head_at_creation || "—")}</code>`],
     ["fingerprint corpus", `<code>${esc(String(fp).slice(0, 16) || "—")}…</code>`],
     ["retrieval", `<code>${esc(s.retrieval_config_id || "—")}</code>`],
+    ["recherche de la session", esc(`${s.retrieval_profile || "hybrid"} · ${s.context_k || 5} passages`)],
     ["générateur", esc(($("runModel").selectedOptions[0] || {}).textContent || "—")],
     ["horodatage", esc(new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC")],
   ].map(([k, v]) => `<p class="kv"><span>${k}</span>${v}</p>`).join("");
@@ -115,6 +126,9 @@ function sessionHead() {
     + ` · HEAD <code>${esc(h.git_head || "—")}</code> · corpus <code>${esc(String(fp).slice(0, 12))}…</code>`
     + ` · ${esc(s.retrieval_config_id || "")}`;
   $("sessionRename").disabled = $("sessionReset").disabled = false;
+  const cfg = $("sessionConfig");
+  if (cfg) cfg.textContent = `${s.retrieval_profile || "hybrid"} · ${s.context_k || 5} passages`
+    + (s.eval_kind === "free" ? " · questions libres" : " · benchmark");
 }
 
 /* ------------------------------------------------------------------ jeux */
@@ -208,7 +222,10 @@ async function createSession() {
   try {
     STATE.session = await api("/api/eval/session", { method: "POST", body: {
       name, benchmark, benchmark_sha256: b.sha256, mode: $("newSessionMode").value, label: name,
-      ...retrievalOptions() } });
+      // Le benchmark gelé se joue TOUJOURS sur la recherche de production (hybride · 5),
+      // figée à la création : les profils expérimentaux ne peuvent plus entrer dans une
+      // session de benchmark par inadvertance (mission real-world §0/§3).
+      retrieval_profile: "hybrid", context_k: 5 } });
     $("newSessionName").value = "";
     localStorage.setItem(LS.last, name);
     notice("sessionNotice", "", "info");
@@ -337,7 +354,11 @@ async function runQuestion() {
   if (!STATE.current) return notice("runNotice", "Sélectionnez une question du jeu.", "warn");
   if (!STATE.session) return notice("runNotice", "Créez ou reprenez une session avant de lancer un run.", "warn");
   const mode = $("runMode").value;
-  const body = { question: STATE.current.question, mode };
+  const s = STATE.session || {};
+  const body = { question: STATE.current.question, mode,
+                 eval_kind: "benchmark",
+                 retrieval_profile: s.retrieval_profile || "hybrid",
+                 context_k: s.context_k || 5 };
   const model = $("runModel").value;
   if (model) body.model = model;
   setBusy(true, "calcul en cours");
@@ -383,6 +404,7 @@ function techHtml(out) {
     ["statut demandé par le modèle", esc(out.status_requested || "—")],
     ["n_claims", t.n_claims], ["toutes citations valides", String(t.claims_all_valid)],
     ["passages dans le contexte", (t.top5_pids || []).length],
+    ["trace", `<code>${esc(out.trace_id || "—")}</code>`],
     ["passage_ids du contexte", `<code>${esc((t.top5_pids || []).join(" "))}</code>`],
     ["passages corpus / pool actif", `${t.n_passages ?? "—"} / ${t.n_pool ?? "—"}`],
     ["modalités citant un passage hors contexte",
@@ -408,14 +430,7 @@ function renderRunResult(out, meta = {}) {
   card.hidden = false;
   const sourceOnly = !!out.source_only;
   const status = sourceOnly ? "SOURCES_ONLY" : out.status || "INCONNU";
-  const labels = {
-    ANSWER: ["Réponse", "fondée sur les sources locales"],
-    CONDITIONAL_ANSWER: ["Réponse conditionnelle", "partielle ou à conditions — lire les limites"],
-    ABSTENTION: ["ABSTENTION", "le système ne répond pas avec les preuves locales"],
-    SOURCES_ONLY: ["Recherche documentaire", "aucune réponse générée"],
-    INCONNU: ["statut non reconnu", "rien n'affiché faute de statut lisible"],
-  };
-  const [code, meaning] = labels[status] || labels.INCONNU;
+  const [code, meaning] = STATUS_LABELS[status] || STATUS_LABELS.INCONNU;
   $("runStatus").textContent = code;
   $("runMeaning").textContent = meaning;
   $("runTime").textContent = fmt((out.timings || {}).t_total_s) + " s"
@@ -450,6 +465,7 @@ function runRow(out) {
   const answer = out.answer || [];
   return {
     benchmark_id: (STATE.current || {}).id, question: out.question,
+    trace_id: out.trace_id,
     benchmark_sha256: (STATE.session || {}).benchmark_sha256,
     run_id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     corpus_fingerprint: (STATE.health || {}).corpus_fingerprint,
@@ -467,6 +483,12 @@ function runRow(out) {
     source_statuses: (out.sources || []).map((s) => ({ ref: s.ref, passage_id: s.passage_id,
                                                       source_status: s.source_status,
                                                       authority: s.source_authority })),
+    // provenance complète de la réponse évaluée (document, page, texte du registre) : une
+    // réponse notée doit rester inspectable après rechargement et dans l'export, sans relancer.
+    sources_cited: JSON.stringify((out.sources || []).map((s) => ({
+      ref: s.ref, passage_id: s.passage_id, document: s.document, page: s.page,
+      source_status: s.source_status, source_authority: s.source_authority,
+      excerpt: String(s.excerpt || "").slice(0, 600) }))),
     has_provisional_source: !!out.has_provisional_source,
     timings: { retrieval_s: (out.timings || {}).retrieval_s, generation_s: (out.timings || {}).generation_s,
                t_total_s: (out.timings || {}).t_total_s },
@@ -490,7 +512,8 @@ function renderCodes() {
   const list = $("codeList");
   if (list.dataset.built) return;
   list.innerHTML = (STATE.taxonomy.length ? STATE.taxonomy : []).map((code) =>
-    `<label class="check"><input type="checkbox" value="${esc(code)}"><span>${esc(code)}</span></label>`
+    `<label class="check"><input type="checkbox" value="${esc(code)}">`
+    + `<span>${esc(TAXONOMY_LABELS[code] || code)}</span></label>`
   ).join("");
   list.dataset.built = "1";
 }
@@ -529,10 +552,12 @@ async function postScore(patch) {
 
 function setVerdict(verdict) {
   if (!STATE.current) return notice("runNotice", "Sélectionnez une question.", "warn");
-  document.querySelectorAll(".verdicts button").forEach((b) =>
+  document.querySelectorAll("#scoring .verdicts button").forEach((b) =>
     b.setAttribute("aria-pressed", String(b.dataset.verdict === verdict)));
+  $("codesField").hidden = !["partial", "incorrect"].includes(verdict);
+  // ENREGISTREMENT IMMÉDIAT (promesse tenue par la page : « à chaque action ») : un verdict
+  // posé au clavier puis une navigation fléchée ne doit jamais perdre la décision.
   postScore({ verdict, codes: currentCodes(), note: $("noteBox").value });
-  window.setTimeout(() => move(1), 250);
 }
 
 function currentCodes() {
@@ -553,19 +578,24 @@ function saveNoteDebounced() {
 
 /* ------------------------------------------------------------------ comparaison de générateurs */
 function renderGenerators() {
+  const live = STATE.generators.filter((g) => g.available);
+  const pref = ((live.find((g) => g.key === "qwen9b" && g.model_served !== false)
+    || live.find((g) => g.key === "flash") || live[0] || {}).key) || "";
   const box = $("cmpGenerators");
-  box.innerHTML = STATE.generators.map((g, i) => `<label class="check gen${g.available ? "" : " off"}">
-      <input type="checkbox" value="${esc(g.key)}" ${i === 0 || (g.available && i < 3) ? "checked" : ""}
+  box.innerHTML = STATE.generators.map((g) => `<label class="check gen${g.available ? "" : " off"}">
+      <input type="checkbox" value="${esc(g.key)}" ${g.key === pref ? "checked" : ""}
         ${g.available ? "" : "disabled"}>
       <span>${esc(g.label)}</span>
       <small>${g.available ? `modèle ${esc(g.model || "?")} · sonde ${fmt(g.t_probe_s, 2)}s`
         : `INDISPONIBLE (${esc(g.error || "sonde en échec")})`}</small>
     </label>`).join("");
-  const select = $("runModel");
-  if (select && !select.options.length) {
-    select.innerHTML = '<option value="">défaut (pipeline)</option>' + STATE.generators.map((g) =>
-      `<option value="${esc(g.key)}" ${g.available ? "" : "disabled"}>${esc(g.label)}${
-        g.available ? "" : " (indisponible)"}</option>`).join("");
+  const options = STATE.generators.map((g) =>
+    `<option value="${esc(g.key)}" ${g.key === pref ? "selected" : ""}
+      ${g.available ? "" : "disabled"}>${esc(g.label)}${g.available ? "" : " (indisponible)"}</option>`
+  ).join("");
+  for (const id of ["runModel", "freeModel"]) {          // mêmes candidats, même contrat
+    const select = $(id);
+    if (select && !select.options.length) select.innerHTML = options;
   }
 }
 
@@ -585,74 +615,6 @@ function labelsFor(key, n) {
 
 function chosenGenerators() {
   return [...document.querySelectorAll("#cmpGenerators input:checked")].map((b) => b.value);
-}
-
-async function runCompare(keepRetrieval) {
-  const question = ($("cmpFree").value.trim()
-    || (STATE.current && STATE.current.question) || "").trim();
-  if (!question) return notice("cmpNotice", "Aucune question : sélectionnez-en une ou écrivez-la.", "warn");
-  const keys = chosenGenerators();
-  if (!keys.length) return notice("cmpNotice", "Cochez au moins un générateur disponible.", "warn");
-  notice("cmpNotice", "", "info");
-  const tokenBox = $("cmpFrozen");
-  let retrieval = STATE.cmpRetrieval;
-  setBusy(true, "retrieval en cours");
-  if (!keepRetrieval || !retrieval) {
-    try {
-      retrieval = await api("/api/eval/retrieval", { method: "POST", body: { question, ...retrievalOptions() } });
-      STATE.cmpRetrieval = retrieval;
-    } catch (e) {
-      setBusy(false);
-      return notice("cmpNotice", "Retrieval en échec : " + e.message, "error");
-    }
-  }
-  setBusy(false);
-  const labels = labelsFor(question, keys.length);
-  const mapping = {};
-  const panels = $("cmpPanels");
-  panels.innerHTML = "";
-  $("cmpQuestion").textContent = question;
-  STATE.cmpShas = {};
-  STATE.cmpFrozenBase = retrieval.source_token
-    ? `top-5 figé · ${((retrieval.technique || {}).top5_pids || []).length} passages · `
-      + `retrieval ${fmt((retrieval.timings || {}).retrieval_s)} s · mode sources, appel générateur `
-      + `compté à ${retrieval.n_generator_calls ?? "—"} par le daemon`
-    : "aucun jeton de retrieval reçu : relancez";
-  tokenBox.textContent = STATE.cmpFrozenBase;
-  const blind = $("cmpBlind").checked;
-  const qid = (STATE.current || {}).id || "libre";
-  STATE.cmpExpectedSha = null;               // le SHA du prompt se vérifie panneau par panneau
-  keys.forEach((key, i) => {
-    const label = labels[i];
-    mapping[label] = key;
-    const article = document.createElement("article");
-    article.className = "panel cmp-card";
-    article.dataset.label = label;
-    article.innerHTML = `<header><span class="cmp-label">Panneau ${esc(label)}</span>
-        <span class="cmp-id" hidden>${esc((STATE.generators.find((g) => g.key === key) || {}).label || key)}</span>
-        <span class="status mono">…</span></header>
-      <div class="body"><p class="fine">génération en cours…</p></div>
-      <div class="verdicts" role="group" aria-label="Décision pour le panneau ${esc(label)}">
-        ${["correct", "partial", "incorrect", "cannot_assess"].map((v) =>
-          `<button type="button" data-verdict="${v}">${v}</button>`).join("")}
-      </div>
-      <label class="field-label">note</label>
-      <textarea rows="2" class="note"></textarea>
-      <p class="fine saved"></p>`;
-    panels.appendChild(article);
-    article.querySelectorAll(".verdicts button").forEach((b) => b.addEventListener("click", () => {
-      article.querySelectorAll(".verdicts button").forEach((x) =>
-        x.setAttribute("aria-pressed", String(x === b)));
-      savePanel(qid, label, key, { verdict: b.dataset.verdict, note: article.querySelector(".note").value });
-      maybeReveal();
-    }));
-    article.querySelector(".note").addEventListener("change", () => {
-      savePanel(qid, label, key, { note: article.querySelector(".note").value });
-    });
-    generateInto(article, key, label, question, retrieval, qid, blind);
-  });
-  STATE.cmpMapping = mapping;
-  STATE.cmpQuestionId = qid;
 }
 
 async function generateInto(article, key, label, question, retrieval, qid, blind) {
@@ -925,11 +887,19 @@ document.addEventListener("keydown", (event) => {
       event.preventDefault();
     } else if (event.key === "e") { $("noteBox").focus(); event.preventDefault(); }
   }
+  if (STATE.tab === "free" && ["1", "2", "3", "4"].includes(event.key)) {
+    setFreeVerdict(["correct", "partial", "incorrect", "cannot_assess"][Number(event.key) - 1]);
+    event.preventDefault();
+  }
+  if (STATE.tab === "free" && !typing && (event.key === "ArrowRight" || event.key === "ArrowLeft")) {
+    moveFree(event.key === "ArrowRight" ? 1 : -1); event.preventDefault();
+  }
 });
 
 function showTab(tab) {
-  if (!["run", "compare", "modes", "lab"].includes(tab)) tab = "run";
+  if (!["run", "free", "compare", "modes", "lab"].includes(tab)) tab = "run";
   STATE.tab = tab;
+  document.body.dataset.tab = tab;        // la page sait quel écran est actif (cf. CSS [data-tab])
   document.querySelectorAll(".tabs button").forEach((b) =>
     b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
   document.querySelectorAll(".tab-panel").forEach((p) => { p.hidden = p.dataset.panel !== tab; });
@@ -996,15 +966,10 @@ if (document.readyState === "loading") document.addEventListener("DOMContentLoad
 else boot();
 
 // V2.1 UX: benchmark-first controls, frontend-only API option propagation.
-const TAXONOMY_LABELS = {RETRIEVAL_MISS:"Source pertinente absente",RERANKER_DROP:"Source écartée au classement",GENERATOR_OMISSION:"Élément important oublié",GENERATOR_OVERGENERALIZATION:"Réponse trop générale",IMPORTANT_CONDITION_MISSING:"Condition importante manquante",INCORRECT_FACT:"Fait incorrect",INAPPROPRIATE_ABSTENTION:"Abstention injustifiée",SHOULD_HAVE_ABSTAINED:"Aurait dû s’abstenir",EXCESSIVE_DETAIL:"Trop détaillé",SOURCE_PROVENANCE_ISSUE:"Problème de source",CITATION_SUPPORT_ISSUE:"Citation insuffisante",GOLD_PROBLEM:"Problème de référence",QUESTION_AMBIGUOUS:"Question ambiguë",OTHER:"Autre"};
 function retrievalOptions(){return {retrieval_profile:$("retrievalProfile").value,context_k:Number($("contextK").value)};}
 function updateActiveConfig(){const x={hybrid:"hybride équilibré",dense:"sémantique dense",bm25:"lexical BM25"};$("activeConfig").textContent=`${x[$("retrievalProfile").value]} · ${$("contextK").value} passages`;}
 function updateHome(){const s=STATE.session;$("continueBtn").hidden=!s;$("sessionSummary").textContent=s?`${s.label||s.name} · ${STATE.questions.length} questions · ${STATE.progress.n_items_scored||0} revues`:"Choisissez ou créez une session dans la configuration pour commencer.";}
-function renderCodes(){const l=$("codeList");if(l.dataset.built)return;l.innerHTML=(STATE.taxonomy||[]).map(c=>`<label class="check"><input type="checkbox" value="${esc(c)}"><span>${esc(TAXONOMY_LABELS[c]||c)}</span></label>`).join("");l.dataset.built="1";}
-function setVerdict(v){if(!STATE.current)return notice("runNotice","Sélectionnez une question.","warn");document.querySelectorAll("#scoring .verdicts button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.verdict===v)));$("codesField").hidden=!["partial","incorrect"].includes(v);}
 async function saveAndNext(){if(!STATE.current)return;const v=(document.querySelector("#scoring .verdicts button[aria-pressed=true]")||{}).dataset?.verdict||null;await postScore({verdict:v,codes:["partial","incorrect"].includes(v)?currentCodes():[],note:$("noteBox").value});move(1);}
-function renderGenerators(){const a=STATE.generators.filter(g=>g.available),n=a.find(g=>g.key==="qwen9b"&&g.model_served!==false),f=STATE.generators.find(g=>g.key==="flash"),p=(n||f||a[0]||{}).key||"";$("cmpGenerators").innerHTML=STATE.generators.map(g=>`<label class="check gen${g.available?"":" off"}"><input type="checkbox" value="${esc(g.key)}" ${g.key===p?"checked":""} ${g.available?"":"disabled"}><span>${esc(g.label)}</span><small>${g.available?`modèle ${esc(g.model||"?")}`:"indisponible"}</small></label>`).join("");$("runModel").innerHTML=STATE.generators.map(g=>`<option value="${esc(g.key)}" ${g.key===p?"selected":""} ${g.available?"":"disabled"}>${esc(g.label)}</option>`).join("");}
-async function runQuestion(){if(!STATE.current||!STATE.session)return notice("runNotice","Reprenez une session puis choisissez une question.","warn");const body={question:STATE.current.question,mode:$("runMode").value,...retrievalOptions()};if($("runModel").value)body.model=$("runModel").value;setBusy(true,"calcul en cours");try{const out=await api("/api/ask",{method:"POST",body});renderRunResult(out);await saveRun(out);}catch(e){notice("runNotice",e.message,"error");}finally{setBusy(false);}}
 async function runCompare(keep){const q=($("cmpFree").value.trim()||(STATE.current&&STATE.current.question)||"").trim(),keys=chosenGenerators();if(!q||!keys.length)return notice("cmpNotice","Choisissez une question et au moins un modèle disponible.","warn");let r=STATE.cmpRetrieval;setBusy(true,"récupération en cours");try{if(!keep||!r){r=await api("/api/eval/retrieval",{method:"POST",body:{question:q,...retrievalOptions()}});STATE.cmpRetrieval=r;}const labels=labelsFor(q,keys.length),map={},box=$("cmpPanels");box.innerHTML="";$("cmpQuestion").textContent=q;STATE.cmpShas={};STATE.cmpExpectedSha=null;STATE.cmpFrozenBase=`top-5 figé · ${$("activeConfig").textContent}`;$("cmpFrozen").textContent=STATE.cmpFrozenBase;const blind=$("cmpBlind").checked,qid=(STATE.current||{}).id||"libre";for(let i=0;i<keys.length;i+=1){const key=keys[i],label=labels[i];map[label]=key;const article=document.createElement("article");article.className="panel cmp-card";article.dataset.label=label;article.innerHTML=`<header><span class="cmp-label">Panneau ${esc(label)}</span><span class="cmp-id" hidden>${esc((STATE.generators.find(g=>g.key===key)||{}).label||key)}</span><span class="status mono">…</span></header><div class="body"><p class="fine">génération ${i+1}/${keys.length} en cours…</p></div>`;box.appendChild(article);notice("cmpNotice",`Génération ${i+1}/${keys.length}…`,"info");await generateInto(article,key,label,q,r,qid,blind);}STATE.cmpMapping=map;STATE.cmpQuestionId=qid;notice("cmpNotice",`Comparaison terminée — ${keys.length} génération(s) séquentielle(s).`,"info");}catch(e){notice("cmpNotice","Retrieval en échec : "+e.message,"error");}finally{setBusy(false);}}
 document.addEventListener("DOMContentLoaded",()=>{$("continueBtn").addEventListener("click",()=>{if(STATE.current)$("questionText").scrollIntoView({behavior:"smooth",block:"center"});});$("prevTop").addEventListener("click",()=>move(-1));$("nextTop").addEventListener("click",()=>move(1));$("scoreNext").addEventListener("click",saveAndNext);$("retrievalProfile").addEventListener("change",updateActiveConfig);$("contextK").addEventListener("change",updateActiveConfig);updateActiveConfig();$("openModes").addEventListener("click",()=>showTab("modes"));$("openLab").addEventListener("click",()=>showTab("lab"));});
 
@@ -1012,3 +977,311 @@ const _v21ResumeSession = resumeSession;
 resumeSession = async function(name) { await _v21ResumeSession(name); updateHome(); };
 const _v21BenchmarkChange = onBenchmarkChange;
 onBenchmarkChange = function() { _v21BenchmarkChange(); updateHome(); };
+
+/* ==================================================================== QUESTIONS LIBRES
+   Mission v2-real-world-validation-001 §3 : un praticien pose une question réelle, évalue la
+   réponse en quelques secondes. Séparation stricte d'avec le benchmark : une file « free » est
+   une session `eval_kind:"free"`, sans jeu ni SHA, où `benchmark_id` = `trace_id` de la requête.
+   Ces lignes ne sont jamais comptées avec un jeu gelé (l'agrégation rend deux rapports). */
+
+function freeSessionDefault() { return "free-" + new Date().toISOString().slice(0, 10); }
+function freeRadio(name) { const el = document.querySelector(`input[name="${name}"]:checked`); return el ? el.value : null; }
+function setFreeRadio(name, value) {
+  document.querySelectorAll(`input[name="${name}"]`).forEach((r) => { r.checked = r.value === value; });
+}
+
+async function downloadText(path, filename, mime) {
+  const session = sessionStorage.getItem("a2med_proxy_session");
+  const r = await fetch(API_BASE + path, { headers: session ? { "X-A2Med-Session": session } : {},
+                                           credentials: "include" });
+  if (r.status === 401) { sessionStorage.removeItem("a2med_proxy_session"); location.href = "./"; return 0; }
+  if (!r.ok) throw new Error(`export en échec (HTTP ${r.status})`);
+  const text = await r.text();
+  const url = URL.createObjectURL(new Blob([text], { type: mime || "text/plain;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  return text.length;
+}
+
+async function ensureFreeSession() {
+  const name = ($("freeSessionName").value || "").trim() || freeSessionDefault();
+  $("freeSessionName").value = name;
+  if ((STATE.freeSession || {}).name === name) return STATE.freeSession;
+  try {
+    const data = await api(`/api/eval/session/${encodeURIComponent(name)}`);
+    STATE.freeSession = data.session;
+  } catch (e) {
+    if (e.http !== 404) throw e;
+    STATE.freeSession = await api("/api/eval/session", { method: "POST",
+      body: { name, kind: "free", mode: "standard", label: name } });
+  }
+  localStorage.setItem(LS.free, name);
+  $("freeSessionState").textContent = STATE.freeSession.eval_kind === "free"
+    ? "file de questions libres" : "ATTENTION : cette file existe déjà comme benchmark";
+  await resumeFree(name, true);
+  return STATE.freeSession;
+}
+
+async function resumeFree(name, keepCurrent) {
+  const data = await api(`/api/eval/session/${encodeURIComponent(name)}`);
+  STATE.freeSession = data.session;
+  STATE.freeRows = {};
+  for (const r of (data.runs || []).filter((r) => r.benchmark_id)) STATE.freeRows[r.benchmark_id] = r;
+  STATE.taxonomy = data.taxonomy || STATE.taxonomy;
+  renderFreeCodes();
+  renderFreeList(keepCurrent);
+}
+
+function renderFreeCodes() {
+  const box = $("freeCodes");
+  if (box.dataset.built === (STATE.taxonomy || []).join(",")) return;
+  box.innerHTML = (STATE.taxonomy || []).map((c) => `<label class="check">
+      <input type="checkbox" value="${esc(c)}"><span>${esc(TAXONOMY_LABELS[c] || c)}</span></label>`).join("");
+  box.dataset.built = (STATE.taxonomy || []).join(",");
+}
+
+function renderFreeList(keepCurrent) {
+  const ids = Object.keys(STATE.freeRows).reverse();          // les plus récentes en tête
+  const select = $("freeHistory");
+  select.innerHTML = '<option value="">— question —</option>' + ids.map((id) => {
+    const r = STATE.freeRows[id];
+    return `<option value="${esc(id)}">${esc(r.verdict ? "✓" : (r.run_status ? "·" : " "))} ${
+      esc(String(r.question || id).slice(0, 70))}</option>`;
+  }).join("");
+  const scored = ids.filter((id) => STATE.freeRows[id].verdict).length;
+  $("freeCount").textContent = `${scored}/${ids.length} évaluées · file ${$("freeSessionName").value}`;
+  if (STATE.freeCurrent && keepCurrent) select.value = STATE.freeCurrent;
+}
+
+function freeOutFromRow(row) {
+  /* Une évaluation doit rester inspectable après rechargement : la ligne de session porte la
+     réponse rendue, le statut, les sources du registre (doc/page/texte) et les latences. */
+  let sources = [];
+  try { sources = JSON.parse(row.sources_cited || "[]"); } catch { sources = []; }
+  let claims = [];
+  try { claims = row.claims_cited || []; } catch { claims = []; }
+  const status = row.run_status === "SOURCES_ONLY" ? null : row.run_status;
+  return { question: row.question, status, source_only: row.run_status === "SOURCES_ONLY",
+           mode: row.mode, answer: claims, sources, limitations: [], reason: "",
+           has_provisional_source: !!row.has_provisional_source, timings: row.timings || {},
+           trace_id: row.trace_id, technique: { n_claims: row.n_claims, top5_pids: row.top5_passage_ids,
+             gen_model: row.generator_label, retrieval_profile: row.retrieval_profile,
+             context_k: row.context_k, generation_prompt_sha256: row.generation_prompt_sha256 } };
+}
+
+function renderFree(out, meta = {}) {
+  const card = $("freeCard");
+  card.hidden = false;
+  const sourceOnly = !!out.source_only;
+  const status = sourceOnly ? "SOURCES_ONLY" : out.status || "INCONNU";
+  const [code, meaning] = STATUS_LABELS[status] || STATUS_LABELS.INCONNU;
+  $("freeStatus").textContent = code;
+  $("freeMeaning").textContent = meaning;
+  $("freeTime").textContent = fmt((out.timings || {}).t_total_s) + " s"
+    + (meta.restored ? " (réponse retrouvée)" : "");
+  card.dataset.status = status;
+  $("freeTrace").textContent = `trace ${out.trace_id || "—"} · mode ${out.mode || "—"} · `
+    + `recherche ${(out.technique || {}).retrieval_profile || "hybrid"} · `
+    + `${(out.technique || {}).context_k || 5} passages`;
+  const banner = $("freeProvisional");
+  banner.hidden = !out.has_provisional_source;
+  banner.textContent = "Au moins une source citée est une recommandation en cours de publication : "
+    + "à manier avec précaution (statut lu du registre, jamais du modèle).";
+  $("freeAnswer").innerHTML = sourceOnly
+    ? `<p class="lead sources-label"><strong>Recherche documentaire — aucune réponse générée.</strong>
+       Les passages ci-dessous sont les plus pertinents du corpus ; aucun texte médical n'a été
+       rédigé, aucun n'est validé.</p>`
+    : (status === "ABSTENTION"
+      ? `<p class="lead abstain"><strong>ABSTENTION.</strong> ${rich(out.reason || "")}</p>`
+      : answerHtml(out.answer)
+        + ((out.limitations || []).length
+          ? `<ul class="limits">${out.limitations.map((l) => `<li>${rich(l)}</li>`).join("")}</ul>` : ""));
+  $("freeSources").innerHTML = sourcesHtml(out.sources,
+    sourceOnly ? "classés par pertinence, sans génération" : "citées par la réponse");
+  $("freeTech").innerHTML = techHtml(out);
+  $("freeScoring").hidden = false;
+}
+
+function freeRow(out, question) {
+  const answer = out.answer || [];
+  return {
+    benchmark_id: out.trace_id || `F${Date.now()}`, question, trace_id: out.trace_id,
+    mode: out.mode, run_status: out.status || (out.source_only ? "SOURCES_ONLY" : null),
+    response: answer.length ? answer.map((a) => `• ${a.text}`).join("\n")
+      : (out.source_only ? "[SOURCES_ONLY — aucune réponse générée]" : out.reason || ""),
+    answer_chars: answer.length ? answer.reduce((n, a) => n + a.text.length, 0)
+      : (out.source_only ? 0 : (out.reason || "").length),
+    n_claims: (out.technique || {}).n_claims,
+    claims_cited: answer.map((a) => ({ text: a.text, refs: a.refs, citation_valid: a.citation_valid })),
+    top5_passage_ids: (out.technique || {}).top5_pids || [],
+    top_context_pids: (out.technique || {}).top_context_pids || [],
+    retrieval_profile: (out.technique || {}).retrieval_profile,
+    context_k: (out.technique || {}).context_k,
+    corpus_fingerprint: (STATE.health || {}).corpus_fingerprint,
+    generator_label: ($("freeModel").selectedOptions[0] || {}).textContent || "flash (défaut)",
+    source_statuses: (out.sources || []).map((s) => ({ ref: s.ref, passage_id: s.passage_id,
+                                                      source_status: s.source_status })),
+    sources_cited: JSON.stringify((out.sources || []).map((s) => ({
+      ref: s.ref, passage_id: s.passage_id, document: s.document, page: s.page,
+      source_status: s.source_status, excerpt: String(s.excerpt || "").slice(0, 600) }))),
+    has_provisional_source: !!out.has_provisional_source,
+    timings: { retrieval_s: (out.timings || {}).retrieval_s,
+               generation_s: (out.timings || {}).generation_s, t_total_s: (out.timings || {}).t_total_s },
+    generation_prompt_sha256: (out.technique || {}).generation_prompt_sha256,
+    n_generator_calls: (out.technique || {}).n_generator_calls,
+  };
+}
+
+async function runFree() {
+  const question = $("freeQ").value.trim();
+  if (!question) return notice("freeNotice", "Écrivez la question avant d'envoyer.", "warn");
+  setBusy(true, "question en cours");
+  notice("freeNotice", "", "info");
+  $("freeCard").hidden = true; $("freeScoring").hidden = true;
+  try {
+    await ensureFreeSession();
+    const body = { question, mode: $("freeMode").value, eval_kind: "free" };
+    if ($("freeModel").value) body.model = $("freeModel").value;
+    const out = await api("/api/ask", { method: "POST", body });
+    STATE.freeCurrent = out.trace_id;
+    renderFree(out);
+    const row = freeRow(out, question);
+    const res = await api(`/api/eval/session/${encodeURIComponent(STATE.freeSession.name)}/run`,
+      { method: "POST", body: row });
+    STATE.freeRows[row.benchmark_id] = { ...row, verdict: null, codes: [], note: "" };
+    if (res.row && res.row.verdict) STATE.freeRows[row.benchmark_id].verdict = res.row.verdict;
+    renderFreeList(true);
+    loadFreeScoreForm();
+    $("freeSaved").textContent = "question enregistrée — évaluez-la ci-dessous";
+  } catch (e) {
+    notice("freeNotice", e.message + (e.body && e.body.detail ? ` — ${e.body.detail}` : ""), "error");
+  } finally { setBusy(false); }
+}
+
+function selectFree(id) {
+  const row = STATE.freeRows[id];
+  if (!row) return;
+  STATE.freeCurrent = id;
+  $("freeQ").value = row.question || "";
+  renderFree(freeOutFromRow(row), { restored: true });
+  loadFreeScoreForm();
+}
+
+function moveFree(delta) {
+  const ids = Object.keys(STATE.freeRows).reverse();
+  if (!ids.length) return;
+  let i = STATE.freeCurrent ? ids.indexOf(STATE.freeCurrent) : -1;
+  i = Math.max(0, Math.min(ids.length - 1, i + delta));
+  $("freeHistory").value = ids[i];
+  selectFree(ids[i]);
+}
+
+function currentFreeCodes() {
+  return [...document.querySelectorAll("#freeCodes input:checked")].map((b) => b.value);
+}
+
+function loadFreeScoreForm() {
+  const row = STATE.freeRows[STATE.freeCurrent] || {};
+  document.querySelectorAll("#freeCodes input").forEach((b) =>
+    b.checked = (row.codes || []).includes(b.value));
+  document.querySelectorAll("#freeVerdicts button").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.verdict === (row.verdict || null))));
+  setFreeRadio("freeSourcesUseful", row.sources_useful || null);
+  setFreeRadio("freeVerbose", row.verbose || null);
+  $("freeNote").value = row.note || "";
+  $("freeSaved").textContent = row.scored_at ? `évaluée ${row.scored_at}` : "";
+}
+
+async function postFreeScore(patch) {
+  if (!STATE.freeSession || !STATE.freeCurrent) {
+    return notice("freeNotice", "Posez d'abord la question.", "warn");
+  }
+  const row = STATE.freeRows[STATE.freeCurrent] || {};
+  const body = { benchmark_id: STATE.freeCurrent, trace_id: row.trace_id || STATE.freeCurrent,
+                 question: row.question || $("freeQ").value,
+                 verdict: row.verdict || null, codes: currentFreeCodes(), note: $("freeNote").value,
+                 sources_useful: freeRadio("freeSourcesUseful"), verbose: freeRadio("freeVerbose"),
+                 ...patch };
+  try {
+    await api(`/api/eval/session/${encodeURIComponent(STATE.freeSession.name)}/score`,
+      { method: "POST", body });
+    Object.assign(STATE.freeRows[STATE.freeCurrent] = row, {
+      verdict: body.verdict, codes: body.codes, note: body.note,
+      sources_useful: body.sources_useful, verbose: body.verbose });
+    $("freeSaved").textContent = `enregistrée ${new Date().toLocaleTimeString()}`;
+    renderFreeList(true);
+  } catch (e) {
+    $("freeSaved").textContent = "ÉCHEC d'enregistrement : " + e.message;
+  }
+}
+
+function setFreeVerdict(verdict) {
+  if (!STATE.freeCurrent) return notice("freeNotice", "Posez d'abord la question.", "warn");
+  document.querySelectorAll("#freeVerdicts button").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.verdict === verdict)));
+  postFreeScore({ verdict });
+}
+
+function exportFree(fmtWanted) {
+  if (!STATE.freeSession) return notice("freeNotice", "Aucune file de questions libres.", "warn");
+  const n = STATE.freeSession.name;
+  return downloadText(`/api/eval/export/${encodeURIComponent(n)}?format=${fmtWanted}`,
+    `${n}.${fmtWanted}`, fmtWanted === "csv" ? "text/csv" : "application/x-ndjson")
+    .then((chars) => notice("freeNotice", `Export ${fmtWanted} téléchargé (${chars} caractères).`, "info"))
+    .catch((e) => notice("freeNotice", e.message, "error"));
+}
+
+function exportBenchmark(fmtWanted) {
+  if (!STATE.session) return notice("runNotice", "Reprenez une session de benchmark.", "warn");
+  const n = STATE.session.name;
+  return downloadText(`/api/eval/export/${encodeURIComponent(n)}?format=${fmtWanted}`,
+    `${n}.${fmtWanted}`, fmtWanted === "csv" ? "text/csv" : "application/x-ndjson")
+    .then((chars) => notice("runNotice", `Export ${fmtWanted} téléchargé (${chars} caractères).`, "info"))
+    .catch((e) => notice("runNotice", e.message, "error"));
+}
+
+function openReport() {
+  if (!STATE.session) return notice("runNotice", "Reprenez une session de benchmark.", "warn");
+  const n = STATE.session.name;
+  return downloadText(`/api/eval/aggregate?sessions=${encodeURIComponent(n)}`, `${n}-rapport.md`,
+    "text/markdown")
+    .then(() => notice("runNotice", "Rapport téléchargé (deux familles rendues séparément).", "info"))
+    .catch((e) => notice("runNotice", e.message, "error"));
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  $("freeSessionName").value = localStorage.getItem(LS.free) || freeSessionDefault();
+  $("freeAsk").addEventListener("click", runFree);
+  $("freePrev").addEventListener("click", () => moveFree(-1));
+  $("freeNext").addEventListener("click", () => moveFree(1));
+  $("freeHistory").addEventListener("change", (e) => selectFree(e.target.value));
+  $("freeSessionName").addEventListener("change", () => {
+    STATE.freeSession = null; ensureFreeSession().catch((e) => notice("freeNotice", e.message, "error"));
+  });
+  $("freeVerdicts").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-verdict]");
+    if (b) setFreeVerdict(b.dataset.verdict);
+  });
+  $("freeCodes").addEventListener("change", () => postFreeScore({}));
+  $("freeNote").addEventListener("input", () => {
+    window.clearTimeout(window.__freeNoteTimer);
+    window.__freeNoteTimer = window.setTimeout(() => postFreeScore({}), 500);
+  });
+  document.querySelectorAll("input[name=freeSourcesUseful], input[name=freeVerbose]")
+    .forEach((r) => r.addEventListener("change", () => postFreeScore({})));
+  $("freeSaveNext").addEventListener("click", async () => {
+    await postFreeScore({});
+    $("freeQ").value = ""; $("freeCard").hidden = true; $("freeScoring").hidden = true;
+    STATE.freeCurrent = null; $("freeHistory").value = "";
+    $("freeQ").focus();
+  });
+  $("freeExportJsonl").addEventListener("click", () => exportFree("jsonl"));
+  $("freeExportCsv").addEventListener("click", () => exportFree("csv"));
+  $("exportJsonl").addEventListener("click", () => exportBenchmark("jsonl"));
+  $("exportCsv").addEventListener("click", () => exportBenchmark("csv"));
+  $("reportBtn").addEventListener("click", openReport);
+  if (localStorage.getItem(LS.free)) {
+    ensureFreeSession().catch(() => { /* service éteint : la page reste utilisable */ });
+  }
+});

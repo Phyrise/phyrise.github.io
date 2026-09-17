@@ -5,10 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>A²-Med — évaluation &amp; laboratoire (expérimental)</title>
 <meta name="description" content="Plateforme de mesure : runs reproductibles, scoring humain, comparaison de générateurs, trace de retrieval. Aucun usage clinique.">
-<link rel="stylesheet" href="./eval.css?v=4504da07">
+<link rel="stylesheet" href="./eval.css?v=7992b0c6">
 </head>
 <body data-api="">
-<script>window.A2MED_API_BASE="https://mel-mandate-carter-erik.trycloudflare.com";</script>
 
 <header class="masthead">
   <div class="wrap mast-top">
@@ -35,6 +34,7 @@
 
   <nav class="tabs" role="tablist" aria-label="Écrans d’évaluation">
     <button type="button" role="tab" id="tab-run" aria-selected="true" data-tab="run">Benchmark</button>
+    <button type="button" role="tab" id="tab-free" aria-selected="false" data-tab="free">Questions libres</button>
     <button type="button" role="tab" id="tab-compare" aria-selected="false" data-tab="compare">Comparaison aveugle</button>
   </nav>
   <section class="panel benchmark-home" id="benchmarkHome"><p class="eyebrow">Benchmark Alexia</p><h1>Une question à la fois.</h1><p id="sessionSummary">Préparation de votre session…</p><button type="button" class="btn primary" id="continueBtn" hidden>Continuer</button></section>
@@ -106,9 +106,18 @@
               <option value="courte" selected>Réponse courte</option><option value="standard">Réponse détaillée</option><option value="sources">Sources seulement — sans réponse générée</option>
             </select>
             <label class="field-label" for="runModel">Modèle</label>
-            <select id="runModel"></select></div><div class="row retrieval-controls"><label class="field-label" for="retrievalProfile">Recherche</label><select id="retrievalProfile"><option value="hybrid" selected>Hybride équilibré</option><option value="dense">Sémantique dense</option><option value="bm25">Lexical BM25</option></select><label class="field-label" for="contextK">Contexte</label><select id="contextK"><option value="5" selected>5 passages</option><option value="10">10 passages</option><option value="15">15 passages</option></select><span class="pill" id="activeConfig">hybride équilibré · 5 passages</span></div><div class="btn-row">
+            <select id="runModel"></select></div>
+          <div class="row retrieval-controls"><span class="pill" id="sessionConfig">recherche : hybride équilibré · 5 passages</span>
+            <span class="fine">Recherche figée à la création de la session — les profils
+              expérimentaux sont dans « Outils de recherche avancés ».</span></div>
+          <div class="btn-row">
             <button type="button" class="btn primary" id="runBtn">Lancer le run</button>
             <button type="button" class="btn quiet" id="labFromRun">Voir la trace retrieval (Lab)</button>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn quiet" id="exportJsonl">Export JSONL</button>
+            <button type="button" class="btn quiet" id="exportCsv">Export CSV</button>
+            <button type="button" class="btn quiet" id="reportBtn">Rapport d'agrégation</button>
           </div>
           <p class="notice" id="runNotice" role="alert" hidden></p>
         </div>
@@ -178,7 +187,94 @@
     <div class="panels" id="cmpPanels"></div>
   </section>
 
-  <details class="panel research-tools"><summary>Outils de recherche avancés</summary><p class="fine">Ces outils servent à l’exploration ; ils ne font pas partie du flux de benchmark Alexia.</p><div class="btn-row"><button type="button" class="btn quiet" id="openModes">Comparer les formats de réponse</button><button type="button" class="btn quiet" id="openLab">Ouvrir Lab retrieval</button></div></details>
+  <details class="panel research-tools"><summary>Outils de recherche avancés</summary><p class="fine">Ces outils servent à l'exploration ; ils ne font pas partie du flux de benchmark Alexia.
+    Le benchmark gelé, lui, utilise la recherche enregistrée à la création de la session.</p>
+  <div class="row wrap-row"><label class="field-label" for="retrievalProfile">Profil de recherche (exploration)</label>
+    <select id="retrievalProfile"><option value="hybrid" selected>Hybride équilibré</option><option value="dense">Sémantique dense</option><option value="bm25">Lexical BM25</option></select>
+    <label class="field-label" for="contextK">Profondeur de contexte</label>
+    <select id="contextK"><option value="5" selected>5 passages</option><option value="10">10 passages</option><option value="15">15 passages</option></select>
+    <span class="pill" id="activeConfig">hybride équilibré · 5 passages</span></div>
+  <div class="btn-row"><button type="button" class="btn quiet" id="openModes">Comparer les formats de réponse</button><button type="button" class="btn quiet" id="openLab">Ouvrir Lab retrieval</button></div></details>
+
+  <!-- ------------------------------------------------------ 1b. questions libres -->
+  <section class="tab-panel" id="panel-free" data-panel="free" role="tabpanel" aria-labelledby="tab-free" hidden>
+    <div class="panel">
+      <p class="eyebrow">Questions réelles — hors benchmark</p>
+      <p class="fine">Question libre posée par un praticien, évaluée par lui. Ces questions ne
+        sont <strong>jamais</strong> mélangées aux jeux du benchmark gelé ni comptées avec elles ;
+        elles n'ont pas de réponse attendue. Zone de mesure, pas de soin.</p>
+      <div class="row wrap-row">
+        <label class="field-label" for="freeSessionName">File de questions libres</label>
+        <input id="freeSessionName" type="text" maxlength="64" aria-describedby="freeSessionHelp">
+        <span class="pill" id="freeSessionState">—</span>
+      </div>
+      <p class="fine" id="freeSessionHelp">Une file par jour ou par practice ; elle porte la mention
+        « free » dans les exports. Les questions déjà posées restent retrouvables ci-dessous.</p>
+      <label class="field-label" for="freeQ">Question</label>
+      <textarea id="freeQ" rows="3" maxlength="500" placeholder="Ex. : chez l'adulte fébrile porteur d'une PAC, quelle durée de antibiothérapie ?"></textarea>
+      <div class="row wrap-row">
+        <label class="field-label" for="freeMode">Mode</label>
+        <select id="freeMode"><option value="standard" selected>Réponse détaillée</option><option value="courte">Réponse courte</option><option value="sources">Sources seulement — sans réponse générée</option></select>
+        <label class="field-label" for="freeModel">Modèle</label>
+        <select id="freeModel"></select>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn primary" id="freeAsk">Poser la question</button>
+        <button type="button" class="btn quiet" id="freePrev">← précédente</button>
+        <button type="button" class="btn quiet" id="freeNext">suivante →</button>
+        <select id="freeHistory" aria-label="Questions libres déjà posées"></select>
+      </div>
+      <p class="progress" id="freeCount">—</p>
+      <p class="notice" id="freeNotice" role="alert" hidden></p>
+    </div>
+
+    <article class="panel" id="freeCard" hidden>
+      <header class="answer-head">
+        <span class="answer-code mono" id="freeStatus"></span>
+        <span class="answer-meaning" id="freeMeaning"></span>
+        <span class="answer-time mono" id="freeTime"></span>
+      </header>
+      <p class="fine mono" id="freeTrace"></p>
+      <p class="provisional-banner" id="freeProvisional" hidden></p>
+      <div id="freeAnswer"></div>
+      <div id="freeSources"></div>
+      <details class="tech" id="freeTechBox">
+        <summary>Détails techniques (repli, pas affichés par défaut)</summary>
+        <div id="freeTech"></div>
+      </details>
+    </article>
+
+    <section class="panel scoring" id="freeScoring" hidden aria-label="Évaluation de la question libre">
+      <p class="fine" id="freeSaved"></p>
+      <div class="verdicts" id="freeVerdicts" role="group" aria-label="Décision principale">
+        <button type="button" data-verdict="correct" class="v-correct">correct <kbd>1</kbd></button>
+        <button type="button" data-verdict="partial" class="v-partial">partiel <kbd>2</kbd></button>
+        <button type="button" data-verdict="incorrect" class="v-incorrect">incorrect <kbd>3</kbd></button>
+        <button type="button" data-verdict="cannot_assess" class="v-na">impossible à évaluer <kbd>4</kbd></button>
+      </div>
+      <fieldset class="codes">
+        <legend>Ce qui ne va pas (plusieurs possibles)</legend>
+        <div class="code-list" id="freeCodes"></div>
+      </fieldset>
+      <div class="row wrap-row yesno"><span>sources utiles ?</span>
+        <label class="check"><input type="radio" name="freeSourcesUseful" value="oui">oui</label>
+        <label class="check"><input type="radio" name="freeSourcesUseful" value="non">non</label>
+        <label class="check"><input type="radio" name="freeSourcesUseful" value="na">na</label>
+      </div>
+      <div class="row wrap-row yesno"><span>indûment verbeuse ?</span>
+        <label class="check"><input type="radio" name="freeVerbose" value="oui">oui</label>
+        <label class="check"><input type="radio" name="freeVerbose" value="non">non</label>
+        <label class="check"><input type="radio" name="freeVerbose" value="na">na</label>
+      </div>
+      <label class="field-label" for="freeNote">Note libre</label>
+      <textarea id="freeNote" rows="2" placeholder="Ce qui manque, ce qui est faux, le cadre qui ne s'applique pas…"></textarea>
+      <div class="btn-row">
+        <button type="button" class="btn primary" id="freeSaveNext">Enregistrer et question suivante →</button>
+        <button type="button" class="btn quiet" id="freeExportJsonl">Export JSONL</button>
+        <button type="button" class="btn quiet" id="freeExportCsv">Export CSV</button>
+      </div>
+    </section>
+  </section>
 
   <!-- ------------------------------------------------------ 3. modes de réponse -->
   <section class="tab-panel" id="panel-modes" data-panel="modes" role="tabpanel" hidden>
@@ -232,6 +328,6 @@
   <p class="fine mono" id="footSession">aucune session chargée</p>
 </footer>
 
-<script src="./eval.js?v=c9d56b2f"></script>
+<script src="./eval.js?v=dc4b66e9"></script>
 </body>
 </html>
