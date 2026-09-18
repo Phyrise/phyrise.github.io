@@ -1024,6 +1024,12 @@ async function boot() {
   } catch (e) {
     STATE.generators = []; renderGenerators();
     notice("sessionNotice", "Contrat du service illisible : " + e.message, "error");
+    // `sessionNotice` est dans un <details> replie : un contrat illisible doit etre visible sans
+    // ouvrir la configuration, sinon le front tourne sur son FALLBACK en silence.
+    const ht = document.getElementById("healthText");
+    if (ht) ht.textContent = "contrat du service illisible — " + e.message;
+    const dot = document.getElementById("healthDot") || document.querySelector("#health .dot");
+    if (dot) dot.classList.add("bad");
   }
   try {
     await loadBenchmarks();
