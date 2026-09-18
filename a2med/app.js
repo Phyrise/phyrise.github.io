@@ -88,6 +88,7 @@ const STATUS = {
 };
 let busy = false, current = null, tickTimer = null, t0 = 0, maxQ = MAXQ_DEFAULT;
 let modelOptions = {};
+let repliNote = '';                                          // « reporté sur … », écrit en clair
 let modelLabels = {};                       // cle -> libelle humain, pour la ligne de reglage
 let streamStats = null, resultWas = null;
 let healthTimer = null, healthTries = 0;
@@ -701,13 +702,19 @@ function renderModelOptions(gens) {
     const first = box.querySelector('input[name="model"]:not([disabled])');
     if (first) { first.checked = true; repli = first.value; }
   }
-  // Un modele par defaut qui ne repond pas est annonce, jamais remplace en silence.
+  // Un modele par defaut qui ne repond pas est annonce, jamais remplace en silence. Le report a
+  // lieu aussi (surtout) à la CONSTRUCTION de la liste, quand `repli` reste null : c'est le modèle
+  // réellement coché qu'il faut nommer, sinon la phrase publiait « reportée sur null ».
   const neuf = gens.find((g) => g.key === 'qwen9b');
+  const retenu = (document.querySelector('input[name="model"]:checked') || {}).value || pref;
+  const reporte = !!(neuf && !neuf.available && retenu !== 'qwen9b');
+  const nom = modelLabels[retenu] || retenu || 'aucun';
+  repliNote = reporte ? `modèle par défaut indisponible, reporté sur ${nom}` : '';
   const hint = $('modelHint');
   if (hint) {
-    hint.textContent = (neuf && !neuf.available && (repli || pref !== 'qwen9b'))
+    hint.textContent = reporte
       ? `9B indisponible (${neuf.error || 'sonde en échec'}) — sélection reportée sur `
-        + `${(gens.find((g) => g.key === repli) || {}).label || repli}. Même retrieval.`
+        + `${nom}. Même retrieval.`
       : 'Même retrieval ; seule la génératrice change.';
   }
   updatePresetLine();
@@ -720,7 +727,7 @@ function updatePresetLine() {
                      sources: 'Sources seules' }[mode] || mode;
   const model = selectedModel();
   const label = model ? (modelLabels[model] || model) : 'modèle en titre';
-  const line = `${modeLabel} · ${label}`;
+  const line = `${modeLabel} · ${label}${repliNote ? ` — ${repliNote}` : ''}`;
   const el = $('presetLine'); if (el) el.textContent = line;
   const sum = $('optionsSummary'); if (sum) sum.textContent = `Options ▸ ${modeLabel.toLowerCase()}`;
 }
