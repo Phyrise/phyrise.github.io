@@ -88,6 +88,7 @@ const STATUS = {
 };
 let busy = false, current = null, tickTimer = null, t0 = 0, maxQ = MAXQ_DEFAULT;
 let modelOptions = {};
+let modelLabels = {};                       // cle -> libelle humain, pour la ligne de reglage
 let streamStats = null, resultWas = null;
 let healthTimer = null, healthTries = 0;
 
@@ -174,6 +175,11 @@ function renderProvisional(data) {
       + 'À ne pas citer comme une recommandation définitive.</span>';
 }
 
+function sourceCount(data) {
+  const n = ((data && data.sources) || []).length;
+  return n ? ` · ${n} source${n > 1 ? 's' : ''}` : '';
+}
+
 function renderAnswer(data) {
   const total = data.timings && Number.isFinite(data.timings.t_total_s)
     ? ` · ${data.timings.t_total_s.toFixed(1)} s` : '';
@@ -181,7 +187,7 @@ function renderAnswer(data) {
     $('answerCard').dataset.status = 'SOURCES_ONLY';
     $('statusCode').textContent = 'SOURCES';
     $('statusMeaning').textContent = corpusLabel(data);
-    $('answerTime').textContent = `Recherche${total}`;
+    $('answerTime').textContent = `Recherche${total}${sourceCount(data)}`;
     renderProvisional(data);
     $('answer').innerHTML = '<p>Les passages ci-dessous sont les cinq résultats du retrieval. '
       + 'Aucune synthèse n’a été générée.</p>'
@@ -195,7 +201,7 @@ function renderAnswer(data) {
   $('answerCard').dataset.status = code;
   $('statusCode').textContent = label;
   $('statusMeaning').textContent = corpusLabel(data);
-  $('answerTime').textContent = `Réponse${total}`;
+  $('answerTime').textContent = `Réponse${total}${sourceCount(data)}`;
   renderProvisional(data);
 
   const claims = data.answer || [];
@@ -356,6 +362,7 @@ function selectedModel() {
 function updateMode() {
   const mode = selectedMode();
   $('modeHint').textContent = '';
+  updatePresetLine();
   $('askBtn').textContent = mode === 'sources' ? 'Rechercher les sources' : 'Obtenir une réponse';
 }
 
@@ -674,19 +681,48 @@ checkHealth();
 function renderModelOptions(gens) {
   const box = $('modelOptions');
   if (!box || !gens.length) return;
-  box.innerHTML = gens.map((g, i) => `<label class="model-opt${g.available ? '' : ' off'}">
-      <input type="radio" name="model" value="${g.key}" ${i === 0 ? 'checked' : ''}
+  modelLabels = {};
+  gens.forEach((g) => { modelLabels[g.key] = g.label; });
+  // Modèle par défaut annoncé au clinicien : le 9B (même règle que /eval), sinon la première
+  // génératrice qui répond — et ce repli est écrit sous le sélecteur, jamais laissé silencieux.
+  const live = gens.filter((g) => g.available);
+  const pref = ((live.find((g) => g.key === 'qwen9b' && g.model_served !== false)
+    || live.find((g) => g.key === 'flash') || live[0] || {}).key) || '';
+  box.innerHTML = gens.map((g) => `<label class="model-opt${g.available ? '' : ' off'}">
+      <input type="radio" name="model" value="${g.key}" ${g.key === pref ? 'checked' : ''}
         ${g.available ? '' : 'disabled'}>
       <span>${g.label}<small>${g.experimental ? 'expérimental' : 'pipeline'}</small>
-        <small>${g.available ? (g.host || 'sondé ok') : 'INDISPONIBLE — non sélectionnable'}</small>
+        <small>${g.available ? 'sondé' : 'INDISPONIBLE — non sélectionnable'}</small>
       </span></label>`).join('');
-  const live = gens.filter((g) => g.available);
   $('modelPicker').hidden = live.length < 2;
   const checked = document.querySelector('input[name="model"]:checked');
+  let repli = null;
   if (!checked || checked.disabled) {
     const first = box.querySelector('input[name="model"]:not([disabled])');
-    if (first) first.checked = true;
+    if (first) { first.checked = true; repli = first.value; }
   }
+  // Un modele par defaut qui ne repond pas est annonce, jamais remplace en silence.
+  const neuf = gens.find((g) => g.key === 'qwen9b');
+  const hint = $('modelHint');
+  if (hint) {
+    hint.textContent = (neuf && !neuf.available && (repli || pref !== 'qwen9b'))
+      ? `9B indisponible (${neuf.error || 'sonde en échec'}) — sélection reportée sur `
+        + `${(gens.find((g) => g.key === repli) || {}).label || repli}. Même retrieval.`
+      : 'Même retrieval ; seule la génératrice change.';
+  }
+  updatePresetLine();
+}
+
+// Ce que l'option repliee est en train de choisir, en clair.
+function updatePresetLine() {
+  const mode = selectedMode();
+  const modeLabel = { standard: 'Réponse détaillée', courte: 'Réponse courte',
+                     sources: 'Sources seules' }[mode] || mode;
+  const model = selectedModel();
+  const label = model ? (modelLabels[model] || model) : 'modèle en titre';
+  const line = `${modeLabel} · ${label}`;
+  const el = $('presetLine'); if (el) el.textContent = line;
+  const sum = $('optionsSummary'); if (sum) sum.textContent = `Options ▸ ${modeLabel.toLowerCase()}`;
 }
 
 async function loadContract() {

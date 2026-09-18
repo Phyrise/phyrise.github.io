@@ -16,7 +16,8 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
 const rich = (s) => esc(s).replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
 const fmt = (v, d = 2) => (typeof v === "number" ? v.toFixed(d) : "—");
 const LS = { labels: "a2med_eval_labels_v1", last: "a2med_eval_last_session_v1",
-             free: "a2med_free_session_v1", freeBench: "a2med_free_last_question_v1" };
+             free: "a2med_free_session_v1", freeBench: "a2med_free_last_question_v1",
+             ux: "a2med_eval_ux_v1" };
 const STATUS_LABELS = {
   ANSWER: ["Réponse", "fondée sur les sources locales"],
   CONDITIONAL_ANSWER: ["Réponse conditionnelle", "partielle ou à conditions — lire les limites"],
@@ -76,6 +77,32 @@ function notice(id, message, kind) {
 
 function say(message) { $("live").textContent = message || ""; }
 
+/* Les deux niveaux de lecture (mission clinician-ux §2) : « medecin » = question, reponse,
+   sources, decision ; « lab » = tout le reste. Un seul mecanisme : body[data-ux] + la classe
+   .lab-only. Rien n'est supprime du DOM — les elements techniques sont seulement masques. */
+function setUx(mode) {
+  STATE.ux = mode;
+  document.body.dataset.ux = mode;
+  const b = $("uxToggle");
+  if (b) b.textContent = mode === "lab" ? "◂ Retour au mode médecin" : "Ouvrir le Lab ▸";
+  localStorage.setItem(LS.ux, mode);
+}
+
+// Le meme appel /api/ask couvre retrieval puis generation : la page ne peut pas connaitre la
+// phase, elle ne fait qu'une supposition honnete sur les latences mesurees de cette machine.
+function stage(boxId, text) {
+  const box = $(boxId);
+  if (box) { box.hidden = !text; box.textContent = text || ""; }
+}
+function stageFlow(boxId) {
+  stage(boxId, "Recherche des passages…");
+  return window.setTimeout(() => stage(boxId, "Génération de la réponse (10-20 s)…"), 2500);
+}
+function stageEnd(boxId, timer) {
+  window.clearTimeout(timer);
+  stage(boxId, "");
+}
+
 function setBusy(busy, label) {
   STATE.busy = busy;
   document.body.classList.toggle("busy", !!busy);
@@ -101,8 +128,7 @@ async function loadHealth() {
 }
 
 function sessionHead() {
-  const s = STATE.session, head = $("sessionHead");
-  if (!s) { head.hidden = true; $("footSession").textContent = "aucune session chargée"; return; }
+  const s = STATE.session, head = $("sessionHead");  if (!s) { head.hidden = true; $("footSession").textContent = "aucune session chargée"; return; }
   const h = STATE.health || {};
   head.hidden = false;
   const fp = h.corpus_fingerprint || "";
@@ -133,6 +159,35 @@ function sessionHead() {
   const cfg = $("sessionConfig");
   if (cfg) cfg.textContent = `${s.retrieval_profile || "hybrid"} · ${s.context_k || 5} passages`
     + (s.eval_kind === "free" ? " · questions libres" : " · benchmark");
+  renderRunConfig();
+}
+
+/* Le couple mode + modele d'une session se choisit a sa creation et ne bouge plus (mission
+   clinician-ux §12) : la page l'affiche en clair, non modifiable. Une session heritee (avant
+   cette regle, sans `generator_key`) garde ses selecteurs actifs — on ne durcit pas le passe. */
+function renderRunConfig() {
+  const s = STATE.session || {}, frozen = !!s.generator_key;
+  const mode = $("runMode"), model = $("runModel");
+  if (mode && s.mode) mode.value = s.mode;
+  if (model && s.generator_key) model.value = s.generator_key;
+  if (mode) mode.disabled = frozen;
+  if (model) model.disabled = frozen;
+  const gen = (STATE.generators.find((g) => g.key === (s.generator_key || (model || {}).value)) || {});
+  const pill = $("runFrozenConfig");
+  if (pill) {
+    const choisi = frozen ? (gen.label || s.generator_key) : ((model || {}).value ? (gen.label || model.value) : "modèle à choisir dans Lab");
+    pill.textContent = `${window.A2MEDContract.modeLabel((s.mode || (mode || {}).value || "courte"))}`
+      + ` · ${choisi}` + (frozen ? " · figé à la création de la session" : "")
+      + (STATE.genNote ? ` — ${STATE.genNote}` : "");
+    pill.hidden = !s.name;
+  }
+  const box = $("freeFrozenConfig");
+  if (box) {
+    const fgen = (STATE.generators.find((g) => g.key === $("freeModel").value) || {});
+    box.textContent = `${window.A2MEDContract.modeLabel($("freeMode").value)}`
+      + ` · ${fgen.label || $("freeModel").value || "modèle par défaut"}`
+      + (STATE.genNote ? ` — ${STATE.genNote}` : "");
+  }
 }
 
 /* ------------------------------------------------------------------ jeux */
@@ -226,6 +281,7 @@ async function createSession() {
   try {
     STATE.session = await api("/api/eval/session", { method: "POST", body: {
       name, benchmark, benchmark_sha256: b.sha256, mode: $("newSessionMode").value, label: name,
+      generator_key: $("newSessionModel").value || null,
       // Le benchmark gelé se joue TOUJOURS sur la recherche de production (hybride · 5),
       // figée à la création : les profils expérimentaux ne peuvent plus entrer dans une
       // session de benchmark par inadvertance (mission real-world §0/§3).
@@ -320,8 +376,9 @@ function renderQuestionList() {
   Object.values(STATE.runs).forEach((r) => (r.codes || []).forEach((c) => codes.add(c)));
   const filterCode = $("filterCode");
   const keep = filterCode.value;
-  filterCode.innerHTML = '<option value="">sans filtre de code</option>'
-    + [...codes].sort().map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  filterCode.innerHTML = '<option value="">sans filtre de motif</option>'
+    + [...codes].sort().map((c) => `<option value="${esc(c)}">`
+      + `${esc(window.A2MEDContract.taxLabel(c))}</option>`).join("");
   filterCode.value = codes.has(keep) ? keep : "";
   if (STATE.current) select.value = STATE.current.id;
 }
@@ -340,7 +397,7 @@ function selectQuestion(id) {
   $("scoring").hidden = !STATE.session;
   loadScoreForm();
   const run = STATE.runs[q.id];
-  if (run) renderRunResult(run, { restored: true });
+  if (run) renderRunResult(runOutFromRow(run), { restored: true });
   say(`${q.id} — ${q.question}`);
 }
 
@@ -357,8 +414,9 @@ function move(delta) {
 async function runQuestion() {
   if (!STATE.current) return notice("runNotice", "Sélectionnez une question du jeu.", "warn");
   if (!STATE.session) return notice("runNotice", "Créez ou reprenez une session avant de lancer un run.", "warn");
-  const mode = $("runMode").value;
   const s = STATE.session || {};
+  //Jamais de mode vide sur le fil : sans session, le benchmark se joue en « standard ».
+  const mode = $("runMode").value || s.mode || "standard";
   const body = { question: STATE.current.question, mode,
                  eval_kind: "benchmark",
                  retrieval_profile: s.retrieval_profile || "hybrid",
@@ -387,18 +445,19 @@ function answerHtml(answer) {
 
 function sourcesHtml(sources, note) {
   if (!sources || !sources.length) return "";
-  return `<details class="sources" open><summary>${sources.length} source${sources.length > 1 ? "s" : ""}`
-    + ` <span class="fine">${esc(note || "")}</span></summary>` + sources.map((s) => `
-      <article class="source-card">
-        <header><strong>${esc(s.ref || "")}</strong> ${esc(s.document || "")}
-          <span class="mono">p. ${esc(s.page ?? "—")}</span>
-          <span class="badge ${s.source_status === "prepublication_recommendation" ? "warn" : "ok"}">${
-            s.source_status === "prepublication_recommendation" ? "pré-publication" : "publié final"}</span>
-          <span class="badge neutral">${esc((s.societies || [s.source_authority]).join("/"))}</span>
-        </header>
-        <p class="excerpt">${rich(s.excerpt)}</p>
-        <p class="fine mono">${esc(s.passage_id || "")}${s.rerank_score != null ? ` · rerank ${fmt(s.rerank_score, 4)}` : ""}</p>
-      </article>`).join("") + `</details>`;
+  // Une source = une ligne, depliable (mission clinician-ux §8) : doc, page, statut, et le texte
+  // du registre seulement quand on ouvre. Replie = rien ne coute, aucun appel.
+  return `<details class="sources"><summary>${sources.length} source${sources.length > 1 ? "s" : ""}`
+    + ` <span class="fine">${esc(note || "")}</span></summary>` + sources.map((s) => {
+      const prov = s.source_status === "prepublication_recommendation";
+      return `<details class="source-row"><summary><strong>${esc(s.ref || "")}</strong>`
+        + ` ${esc(s.document || "")} <span class="mono">p. ${esc(s.page ?? "—")}</span>`
+        + ` <span class="badge ${prov ? "warn" : "ok"}">${prov ? "pré-publication" : "publié final"}</span>`
+        + `</summary><p class="excerpt">${rich(s.excerpt)}</p>`
+        + `<p class="fine">${esc((s.societies || [s.source_authority]).join("/"))}</p>`
+        + `<p class="fine mono">${esc(s.passage_id || "")}`
+        + `${s.rerank_score != null ? ` · rerank ${fmt(s.rerank_score, 4)}` : ""}</p></details>`;
+    }).join("") + `</details>`;
 }
 
 function techHtml(out) {
@@ -426,15 +485,12 @@ function techHtml(out) {
     ? "" : `<p class="fine">Aucun passage source n'est exposé par cette réponse : le mode sources
             n'a pas été utilisé et les sources citées sont affichées ci-dessus.</p>`;
   return `<table class="kv-table"><tbody>` + rows.map(([k, v]) =>
-    `<tr><th>${k}</th><td>${v ?? "—"}</td></tr>`).join("") + `</tbody></table>` + passages
-    + inspectionHtml(out);
+    `<tr><th>${k}</th><td>${v ?? "—"}</td></tr>`).join("") + `</tbody></table>` + passages;
 }
 
-/* Panneau d'inspection scientifique (mission eval-platform-v1 §7). Replié par défaut : la page
-   reste clinique. Tout est LU de la décharge déjà écrite par le run — aucun ré-appel de retrieval,
-   aucun ré-appel de générateur, aucun recalcul. Ce n'est pas une chaîne de pensée : le pipeline
-   tourne thinking OFF, il n'en produit pas. La « sortie brute » demandée ici = les items structurés
-   renvoyés par le modèle, avant validation par le registre. */
+/* Panneau d'inspection scientifique. Il est sous la reponse, replie, et ne declenche AUCUN appel
+   (mission clinician-ux §8/§13) : tout est lu de la decharge deja recue du run. Ce n'est pas une
+   chaine de pensee : le pipeline tourne thinking OFF, il n'en produit pas. */
 function inspectionHtml(out) {
   const lin = out.lineage || {}, raw = out.raw_generator_output || [], val = out.validated_output || [];
   const n = (v) => (v === null || v === undefined || v === "" ? "—" : esc(String(v)));
@@ -481,8 +537,7 @@ function renderRunResult(out, meta = {}) {
   const [code, meaning] = STATUS_LABELS[status] || STATUS_LABELS.INCONNU;
   $("runStatus").textContent = code;
   $("runMeaning").textContent = meaning;
-  $("runTime").textContent = fmt((out.timings || {}).t_total_s) + " s"
-    + (meta.restored ? " (run retrouvé)" : "");
+  $("runMetaLine").textContent = answerMeta(out, meta);
   card.dataset.status = status;
   const banner = $("runProvisional");
   banner.hidden = !out.has_provisional_source;
@@ -499,6 +554,7 @@ function renderRunResult(out, meta = {}) {
           ? `<ul class="limits">${out.limitations.map((l) => `<li>${rich(l)}</li>`).join("")}</ul>` : ""));
   $("runSources").innerHTML = sourcesHtml(out.sources,
     sourceOnly ? "classés par pertinence, sans génération" : "citées par la réponse");
+  $("runInspect").innerHTML = inspectionHtml(out);
   $("runTech").innerHTML = techHtml(out);
   STATE.lastRun = out;
   if (meta.record !== false) {
@@ -507,6 +563,38 @@ function renderRunResult(out, meta = {}) {
     };
     renderQuestionList();
   }
+}
+
+/* Reprendre une question doit restituer la REPONSE et ses sources, pas seulement le verdict :
+   la ligne de session porte la réponse rendue, le statut, les sources du registre (doc, page,
+   texte) et les latences. Sans cette lecture, un rechargement laissait l'écran vide et le
+   praticien relançait un calcul pour retrouver ce qu'il avait déjà noté.
+   Les champs d'inspection (lignée, brut, validé) sont relus eux aussi : la relance d'un appel
+   de calcul n'est jamais nécessaire pour retrouver une évaluation. */
+function runOutFromRow(row) {
+  let sources = [];
+  try { sources = JSON.parse(row.sources_cited || "[]"); } catch { sources = []; }
+  let claims = [];
+  try { claims = row.claims_cited || []; } catch { claims = []; }
+  const status = row.run_status === "SOURCES_ONLY" ? null : row.run_status;
+  return { question: row.question, status, source_only: row.run_status === "SOURCES_ONLY",
+           mode: row.mode, answer: claims, sources, limitations: [], reason: "",
+           has_provisional_source: !!row.has_provisional_source, timings: row.timings || {},
+           trace_id: row.trace_id, lineage: row.lineage || null,
+           raw_generator_output: row.raw_generator_output || null,
+           validated_output: row.validated_output || null,
+           technique: { n_claims: row.n_claims, top5_pids: row.top5_passage_ids,
+             gen_model: row.generator_label, retrieval_profile: row.retrieval_profile,
+             context_k: row.context_k, generation_prompt_sha256: row.generation_prompt_sha256 } };
+}
+
+/* Une ligne de metadonnees, pas un bloc technique : « Réponse · 2,3 s · 1 source ».
+   trace_id, modele, SHA, latences detaillees restent sous « Détails techniques » / Lab. */
+function answerMeta(out, meta = {}) {
+  const n = (out.sources || []).length;
+  return `${out.source_only ? "Recherche documentaire" : (out.status === "ABSTENTION" ? "Abstention" : "Réponse")}`
+    + ` · ${fmt((out.timings || {}).t_total_s)} s · ${n} source${n > 1 ? "s" : ""}`
+    + (meta.restored ? " · réponse retrouvée" : "");
 }
 
 /* Les trois champs d'inspection viennent de la reponse de /api/ask : les renvoyer au moment de
@@ -526,6 +614,8 @@ function runRow(out) {
     run_id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     corpus_fingerprint: (STATE.health || {}).corpus_fingerprint,
     generator_label: ($("runModel").selectedOptions[0] || {}).textContent || "flash (défaut)",
+    // cle machine du modele : c'est elle que la session figee compare (le label, lui, est humain)
+    generator_key: $("runModel").value || null,
     mode: out.mode || $("runMode").value, run_status: out.status || (out.source_only ? "SOURCES_ONLY" : null),
     response: answer.length ? answer.map((a) => `• ${a.text}`).join("\n")
       : (out.source_only ? "[SOURCES_ONLY — aucune réponse générée]" : out.reason || ""),
@@ -566,21 +656,65 @@ async function saveRun(out) {
 /* ------------------------------------------------------------------ scoring */
 function renderFreeModes() {   // valeurs = wire du contrat, texte = label + intention
   const sel = $("freeMode"); if (!sel) return;
-  const keep = sel.value;
+  const keep = sel.value || "courte";      // defaut medecin : reponse courte (clinician-ux §5)
   const modes = window.A2MEDContract.caps().modes || [];
   if (modes.length) sel.innerHTML = modes.map((m) =>
     `<option value="${esc(m.wire)}">${esc(m.label)} — ${esc(m.hint || "")}</option>`).join("");
-  if (keep) sel.value = keep;
+  sel.value = keep;
+  if (!sel.value) sel.value = "courte";
+  // Le benchmark garde son defaut historique (« standard ») : une session creee aujourd'hui doit
+  // rester comparable avec celles deja scorees. Seules les questions libres sont en courte.
+  const sessionMode = $("newSessionMode");
+  if (sessionMode && modes.length && !sessionMode.options.length) {
+    sessionMode.innerHTML = modes.map((m) => `<option value="${esc(m.wire)}">${esc(m.label)}</option>`).join("");
+  }
+  if (sessionMode && sessionMode.options.length && !sessionMode.value) sessionMode.value = "standard";
+  // Le selecteur de mode du benchmark était laissé VIDE : `$("runMode").value` valait "", le
+  // service retombait sur « standard » en silence et un run demandé en « courte » était enregistré
+  // en « standard » — avec le gel de session (clinician-ux), il était même refusé (409).
+  const runMode = $("runMode");
+  if (runMode && modes.length && !runMode.options.length) {
+    runMode.innerHTML = modes.map((m) => `<option value="${esc(m.wire)}">${esc(m.label)}</option>`).join("");
+  }
+  if (runMode && runMode.options.length && !runMode.value) runMode.value = "standard";
 }
 
 function renderCodes() {
   const list = $("codeList");
-  if (list.dataset.built) return;
-  list.innerHTML = (STATE.taxonomy.length ? STATE.taxonomy : []).map((code) =>
-    `<label class="check"><input type="checkbox" value="${esc(code)}">`
-    + `<span>${esc(window.A2MEDContract.taxLabel(code))} <code class="taxcode">${esc(window.A2MEDContract.taxUi(code))}</code></span></label>`
-  ).join("");
-  list.dataset.built = "1";
+  if (!list.dataset.built) {
+    list.innerHTML = (STATE.taxonomy.length ? STATE.taxonomy : []).map((code) =>
+      `<label class="check"><input type="checkbox" value="${esc(code)}">`
+      + `<span>${esc(window.A2MEDContract.taxLabel(code))} <code class="taxcode">${esc(window.A2MEDContract.taxUi(code))}</code></span></label>`
+    ).join("");
+    list.dataset.built = "1";
+  }
+  renderSimpleCodes("simpleCodes", "codeList");
+  renderSimpleCodes("freeSimpleCodes", "freeCodes");
+}
+
+/* Les motifs medecins ne sont PAS une deuxieme taxonomie : chacun cochera une case DEJA existante
+   de la liste des 17 codes. Le contrat n'est donc pas decore — meme etat, memes cles stables a
+   l'export et aux agregats. La liste complete reste sous « Classification détaillée » (§7). */
+function renderSimpleCodes(boxId, listId) {
+  const box = $(boxId);
+  if (!box) return;
+  box.innerHTML = window.A2MEDContract.taxonomySimple().map((m) =>
+    `<button type="button" class="chip" role="checkbox" aria-checked="false" data-code="${esc(m.code)}">`
+    + `${esc(m.label)}</button>`).join("");
+  syncChips(listId, boxId);
+}
+
+function syncChips(listId, boxId) {
+  const checked = new Set([...document.querySelectorAll(`#${listId} input:checked`)].map((b) => b.value));
+  document.querySelectorAll(`#${boxId} .chip`).forEach((c) =>
+    c.setAttribute("aria-checked", String(checked.has(c.dataset.code))));
+}
+
+function toggleChip(listId, boxId, chip) {
+  const box = document.querySelector(`#${listId} input[value="${chip.dataset.code}"]`);
+  if (!box) return;                        // un motif sans code dans le contrat n'ecrit rien
+  box.checked = !box.checked;
+  syncChips(listId, boxId);
 }
 
 function loadScoreForm() {
@@ -589,6 +723,7 @@ function loadScoreForm() {
   document.querySelectorAll("#codeList input").forEach((box) => {
     box.checked = (row.codes || []).includes(box.value);
   });
+  syncChips("codeList", "simpleCodes");
   $("noteBox").value = row.note || "";
   document.querySelectorAll(".verdicts button").forEach((b) => {
     b.setAttribute("aria-pressed", String(b.dataset.verdict === (row.verdict || null)));
@@ -646,6 +781,12 @@ function renderGenerators() {
   const live = STATE.generators.filter((g) => g.available);
   const pref = ((live.find((g) => g.key === "qwen9b" && g.model_served !== false)
     || live.find((g) => g.key === "flash") || live[0] || {}).key) || "";
+  // Pas de repli silencieux (clinician-ux §5) : si le modele par defaut est sonde hors service,
+  // la page le dit au lieu de faire semblant de jouer sur le 9B.
+  const neuf = STATE.generators.find((g) => g.key === "qwen9b");
+  STATE.genNote = (neuf && !neuf.available && pref && pref !== "qwen9b")
+    ? `modèle par défaut indisponible (${neuf.error || "sonde en échec"}) — sélection reportée sur `
+      + `${(STATE.generators.find((g) => g.key === pref) || {}).label || pref}` : "";
   const box = $("cmpGenerators");
   box.innerHTML = STATE.generators.map((g) => `<label class="check gen${g.available ? "" : " off"}">
       <input type="checkbox" value="${esc(g.key)}" ${g.key === pref ? "checked" : ""}
@@ -658,10 +799,12 @@ function renderGenerators() {
     `<option value="${esc(g.key)}" ${g.key === pref ? "selected" : ""}
       ${g.available ? "" : "disabled"}>${esc(g.label)}${g.available ? "" : " (indisponible)"}</option>`
   ).join("");
-  for (const id of ["runModel", "freeModel"]) {          // mêmes candidats, même contrat
+  // memes candidats, meme contrat ; `newSessionModel` = le choix qui sera fige a la creation
+  for (const id of ["runModel", "freeModel", "newSessionModel"]) {
     const select = $(id);
     if (select && !select.options.length) select.innerHTML = options;
   }
+  renderRunConfig();
 }
 
 function labelsFor(key, n) {
@@ -963,9 +1106,17 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+const LAB_TABS = ["compare", "modes", "lab", "admin"];
+
 function showTab(tab) {
-  if (!["run", "free", "compare", "modes", "lab"].includes(tab)) tab = "run";
+  if (!["run", "free"].concat(LAB_TABS).includes(tab)) tab = "run";
   STATE.tab = tab;
+  // Un onglet de Lab implique le mode Lab (sinon ses panneaux seraient masques par le CSS) ;
+  // revenir a Benchmark/Questions libres replie le Lab et rend l'ecran clinique.
+  const lab = LAB_TABS.includes(tab);
+  $("labBox").open = lab;
+  setUx(lab ? "lab" : "medecin");
+  if (lab) STATE.labTab = tab;
   document.body.dataset.tab = tab;        // la page sait quel écran est actif (cf. CSS [data-tab])
   document.querySelectorAll(".tabs button").forEach((b) =>
     b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
@@ -983,6 +1134,31 @@ async function boot() {
   document.querySelectorAll(".tabs button").forEach((b) =>
     b.addEventListener("click", () => showTab(b.dataset.tab)));
   $("sessionCreate").addEventListener("click", createSession);
+  $("uxToggle").addEventListener("click", () => {
+    if (document.body.dataset.ux === "lab") showTab("run");
+    else { $("labBox").open = true; showTab(STATE.labTab || "admin"); }
+  });
+  $("changeConfig").addEventListener("click", () => {
+    $("sessionBar").open = true;
+    $("newSessionName").focus();
+    say("Configuration : le mode et le modele seront figes pour toute la session.");
+  });
+  $("simpleCodes").addEventListener("click", (e) => {
+    const chip = e.target.closest(".chip");
+    if (!chip) return;
+    toggleChip("codeList", "simpleCodes", chip);
+    saveCodes();
+  });
+  $("freeSimpleCodes").addEventListener("click", (e) => {
+    const chip = e.target.closest(".chip");
+    if (!chip) return;
+    toggleChip("freeCodes", "freeSimpleCodes", chip);
+    postFreeScore({});
+  });
+  $("freeMode").addEventListener("change", renderRunConfig);
+  $("freeModel").addEventListener("change", renderRunConfig);
+  setUx(document.body.dataset.tab && LAB_TABS.includes(document.body.dataset.tab)
+    ? "lab" : (localStorage.getItem(LS.ux) || "medecin"));
   $("sessionResume").addEventListener("click", () => resumeSession());
   $("sessionRename").addEventListener("click", renameSession);
   $("sessionReset").addEventListener("click", resetSession);
@@ -1013,21 +1189,28 @@ async function boot() {
   const baseProblem = window.A2MEDContract.apiBaseProblem(API_BASE);
   if (baseProblem) notice("sessionNotice", baseProblem, "error");
   await loadHealth();
+  // Le contrat (modes, verdicts, taxonomie, modèles) ne décore que le reste : s'il est muet,
+  // les jeux et les sessions doivent quand même charger. Une liste vide à l'écran a déjà été
+  // vécue comme « la plateforme est morte » alors que le service répondait (18/09).
+  let contratMuet = null;
   try {
-    // Une seule source de vérité pour les modes, verdicts, familles, taxonomie et modèles.
     const caps = window.A2MEDContract.apply(await api("/api/capabilities"));
     STATE.generators = caps.generators || [];
     STATE.taxonomy = (caps.taxonomy || []).map((t) => t.code);
-    renderGenerators();
-    renderCodes();
-    renderFreeModes();
   } catch (e) {
-    STATE.generators = []; renderGenerators();
-    notice("sessionNotice", "Contrat du service illisible : " + e.message, "error");
+    contratMuet = e.message;
+    STATE.generators = [];
+  }
+  renderFreeModes();          // d'abord : les selecteurs de mode portent le defaut medecin
+  renderGenerators();         // ensuite : modeles sondes + eventuel repli de selection
+  renderCodes();
+  renderRunConfig();
+  if (contratMuet) {
+    notice("sessionNotice", "Contrat du service illisible : " + contratMuet, "error");
     // `sessionNotice` est dans un <details> replie : un contrat illisible doit etre visible sans
     // ouvrir la configuration, sinon le front tourne sur son FALLBACK en silence.
     const ht = document.getElementById("healthText");
-    if (ht) ht.textContent = "contrat du service illisible — " + e.message;
+    if (ht) ht.textContent = "contrat du service illisible — " + contratMuet;
     const dot = document.getElementById("healthDot") || document.querySelector("#health .dot");
     if (dot) dot.classList.add("bad");
   }
@@ -1162,12 +1345,13 @@ function renderFree(out, meta = {}) {
   const [code, meaning] = STATUS_LABELS[status] || STATUS_LABELS.INCONNU;
   $("freeStatus").textContent = code;
   $("freeMeaning").textContent = meaning;
-  $("freeTime").textContent = fmt((out.timings || {}).t_total_s) + " s"
-    + (meta.restored ? " (réponse retrouvée)" : "");
+  $("freeMetaLine").textContent = answerMeta(out, meta);
   card.dataset.status = status;
+  // trace_id / profil de recherche : technique, donc dans la table « Détails techniques »
   $("freeTrace").textContent = `trace ${out.trace_id || "—"} · mode ${out.mode || "—"} · `
     + `recherche ${(out.technique || {}).retrieval_profile || "hybrid"} · `
     + `${(out.technique || {}).context_k || 5} passages`;
+  $("freeInspect").innerHTML = inspectionHtml(out);
   const banner = $("freeProvisional");
   banner.hidden = !out.has_provisional_source;
   banner.textContent = "Au moins une source citée est une recommandation en cours de publication : "
@@ -1183,6 +1367,8 @@ function renderFree(out, meta = {}) {
           ? `<ul class="limits">${out.limitations.map((l) => `<li>${rich(l)}</li>`).join("")}</ul>` : ""));
   $("freeSources").innerHTML = sourcesHtml(out.sources,
     sourceOnly ? "classés par pertinence, sans génération" : "citées par la réponse");
+  // `techHtml` porte déjà la trace de la requête : un helper inexistant `tableHtml` cassait ici
+  // toute la fin du rendu (le panneau d'évaluation ne se révélait plus). Trouvé par la sonde.
   $("freeTech").innerHTML = techHtml(out);
   $("freeScoring").hidden = false;
 }
@@ -1205,6 +1391,7 @@ function freeRow(out, question) {
     context_k: (out.technique || {}).context_k,
     corpus_fingerprint: (STATE.health || {}).corpus_fingerprint,
     generator_label: ($("freeModel").selectedOptions[0] || {}).textContent || "flash (défaut)",
+    generator_key: $("freeModel").value || null,
     source_statuses: (out.sources || []).map((s) => ({ ref: s.ref, passage_id: s.passage_id,
                                                       source_status: s.source_status })),
     sources_cited: JSON.stringify((out.sources || []).map((s) => ({
@@ -1224,6 +1411,7 @@ async function runFree() {
   setBusy(true, "question en cours");
   notice("freeNotice", "", "info");
   $("freeCard").hidden = true; $("freeScoring").hidden = true;
+  const timer = stageFlow("freeStage");
   try {
     await ensureFreeSession();
     const body = { question, mode: $("freeMode").value, eval_kind: "free" };
@@ -1241,7 +1429,7 @@ async function runFree() {
     $("freeSaved").textContent = "question enregistrée — évaluez-la ci-dessous";
   } catch (e) {
     notice("freeNotice", e.message + (e.body && e.body.detail ? ` — ${e.body.detail}` : ""), "error");
-  } finally { setBusy(false); }
+  } finally { stageEnd("freeStage", timer); setBusy(false); }
 }
 
 function selectFree(id) {
@@ -1270,6 +1458,7 @@ function loadFreeScoreForm() {
   const row = STATE.freeRows[STATE.freeCurrent] || {};
   document.querySelectorAll("#freeCodes input").forEach((b) =>
     b.checked = (row.codes || []).includes(b.value));
+  syncChips("freeCodes", "freeSimpleCodes");
   document.querySelectorAll("#freeVerdicts button").forEach((b) =>
     b.setAttribute("aria-pressed", String(b.dataset.verdict === (row.verdict || null))));
   setFreeRadio("freeSourcesUseful", row.sources_useful || null);

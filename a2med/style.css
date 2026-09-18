@@ -284,3 +284,17 @@ summary:focus-visible, .state-retry:focus-visible, .hist:focus-visible {
    fixes (minmax(0,1fr) compris) faisait deborder le texte a 360 px — mesure, pas gout. */
 .model-options{grid-template-columns:repeat(auto-fit,minmax(104px,1fr))}
 .model-options span,.model-options small{overflow-wrap:anywhere;min-width:0}
+
+/* Reglages preregles, replies (mission clinician-ux §5/§6) : le praticien tape sa question,
+   le mode (court) et le modele (9B) sont deja choisis et non masques — seulement deplies. */
+.preset { margin: 6px 0 2px; }
+.options { margin: 4px 0 0; border-top: 1px solid var(--line); padding-top: 8px; }
+.options > summary { cursor: pointer; font-size: 13.5px; color: var(--ink-2); font-weight: 650;
+  min-height: 32px; }
+.sources-box { margin-top: 12px; }
+.sources-box > summary { cursor: pointer; font-weight: 650; font-size: 14px; }
+
+/* Un détail replié ne doit rien rendre : sans cette règle, un `display` imposé par
+   notre propre CSS (grille, flex) reforme le contenu « caché » et l'écran clinique
+   réaffiche SHA, imports et listes de questions. */
+details:not([open]) > :not(summary) { display: none !important; }

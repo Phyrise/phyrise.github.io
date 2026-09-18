@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>A²-Med — réponses médicales sourcées</title>
 <meta name="description" content="Question médicale, réponse française citée, extraite des recommandations SpILF locales.">
-<link rel="stylesheet" href="./style.css?v=edad18b8">
+<link rel="stylesheet" href="./style.css?v=e6d13b70">
 </head>
 <body data-api="https://mel-mandate-carter-erik.trycloudflare.com">
 <div id="passwordGate" class="password-gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
@@ -49,20 +49,27 @@
       <span id="qHint">Entrée : envoyer · Shift + Entrée : saut de ligne</span>
       <span id="qCount" aria-live="off">0 / 500</span>
     </div>
-    <fieldset class="mode-picker" aria-describedby="modeHint">
-      <legend>Que souhaitez-vous obtenir ?</legend>
-      <div class="mode-options">
-        <label><input type="radio" name="mode" value="standard" checked><span>Standard<small>Synthèse sourcée</small></span></label>
-        <label><input type="radio" name="mode" value="courte"><span>Courte<small>Plus concise</small></span></label>
-        <label><input type="radio" name="mode" value="sources"><span>Sources<small>Sans génération</small></span></label>
-      </div>
-      <p class="fine" id="modeHint"></p>
-    </fieldset>
-    <fieldset class="model-picker" id="modelPicker" hidden aria-describedby="modelHint">
-      <legend>Modèle de test — expérimental</legend>
-      <div class="model-options" id="modelOptions"><!-- rempli par /api/capabilities : seuls les modèles réellement répondants sont sélectionnables --></div>
-      <p class="fine" id="modelHint">Même retrieval ; seule la génératrice change.</p>
-    </fieldset>
+    <!-- Le praticien veut une reponse, pas une console : mode et modele sont prereglés
+         (réponse courte, 9B) et repliés sous « Options ». Les valeurs envoyees au service
+         sont exactement les memes qu'avant — seul l'affichage change. -->
+    <p class="fine preset" id="presetLine">Réponse courte · modèle en titre</p>
+    <details class="options" id="optionsBox">
+      <summary id="optionsSummary">Options ▸ réponse courte</summary>
+      <fieldset class="mode-picker" aria-describedby="modeHint">
+        <legend>Que souhaitez-vous obtenir ?</legend>
+        <div class="mode-options">
+          <label><input type="radio" name="mode" value="standard"><span>Standard<small>Synthèse sourcée</small></span></label>
+          <label><input type="radio" name="mode" value="courte" checked><span>Courte<small>Plus concise</small></span></label>
+          <label><input type="radio" name="mode" value="sources"><span>Sources<small>Sans génération</small></span></label>
+        </div>
+        <p class="fine" id="modeHint"></p>
+      </fieldset>
+      <fieldset class="model-picker" id="modelPicker" hidden aria-describedby="modelHint">
+        <legend>Modèle de test — expérimental</legend>
+        <div class="model-options" id="modelOptions"><!-- rempli par /api/capabilities : seuls les modèles réellement répondants sont sélectionnables --></div>
+        <p class="fine" id="modelHint">Même retrieval ; seule la génératrice change.</p>
+      </fieldset>
+    </details>
     <div class="btn-row">
       <button type="submit" class="btn primary" id="askBtn">Obtenir une réponse</button>
     </div>
@@ -135,7 +142,7 @@
   <p class="fine mono" id="fingerprint"></p>
 </footer>
 
-<script src="./a2med_contract.js?v=43104fb9"></script>
-<script src="./app.js?v=2a391676"></script>
+<script src="./a2med_contract.js?v=995d5de8"></script>
+<script src="./app.js?v=3a1fca84"></script>
 </body>
 </html>

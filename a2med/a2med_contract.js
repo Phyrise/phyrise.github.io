@@ -12,6 +12,23 @@ Aucune logique scientifique ici : ni retrieval, ni prompt, ni seuil.
 (function () {
   "use strict";
 
+  /* Motifs vus par le clinicien (§7 du mission brief) -> CODES STABLES de la taxonomie.
+     Une simple etiquette francaise ecrit le code existant : les aggregates, l'export et les
+     sessions ne changent pas. Les 7 codes restants restent accessibles dans
+     « Classification détaillée » (memes 17 clés, meme cle d'aggregate). */
+  const TAXONOMY_SIMPLE = [
+    { label: "Information importante manquante", code: "IMPORTANT_CONDITION_MISSING" },
+    { label: "Information incorrecte", code: "INCORRECT_FACT" },
+    { label: "Mauvais contexte / population", code: "APPLICABILITY_MISMATCH" },
+    { label: "Mauvaise source / citation", code: "SOURCE_PROVENANCE_ISSUE" },
+    { label: "Aurait dû s’abstenir", code: "SHOULD_HAVE_ABSTAINED" },
+    { label: "S’est abstenu à tort", code: "INAPPROPRIATE_ABSTENTION" },
+    { label: "Réponse trop vague / imprécise", code: "ANSWER_IMPRECISE" },
+    { label: "Réponse trop détaillée", code: "EXCESSIVE_DETAIL" },
+    { label: "Question ambiguë / impossible à trancher", code: "QUESTION_AMBIGUOUS" },
+    { label: "Autre", code: "OTHER" },
+  ];
+
   // Repli : uniquement ce qu'il faut pour afficher un message compréhensible quand /api/capabilities
   // est muet. Ce ne sont PAS des valeurs de vérité : dès que le backend répond, il les remplace.
   const FALLBACK = {
@@ -23,9 +40,12 @@ Aucune logique scientifique ici : ni retrieval, ni prompt, ni seuil.
     verdict_keys: { "1": "correct", "2": "partial", "3": "incorrect", "4": "cannot_assess" },
     eval_kinds: ["benchmark", "free"],
     taxonomy: [], generators: [], sources_useful: [],
+    taxonomy_simple: TAXONOMY_SIMPLE,
   };
   const VERDICT_LABEL = { correct: "Correct", partial: "Partiel", incorrect: "Incorrect",
                           cannot_assess: "Impossible à juger" };
+
+
   const MODE_LABEL = { standard: "Standard", courte: "Courte", sources: "Sources" };
   const HTTP_FR = {
     400: "requête refusée", 401: "session expirée — re-saisissez le mot de passe",
@@ -105,6 +125,10 @@ Aucune logique scientifique ici : ni retrieval, ni prompt, ni seuil.
   const taxLabel = (code) => { const t = taxOf(code); return t ? t.label : code; };
   const taxUi = (code) => { const t = taxOf(code); return t ? t.ui : code; };
   const taxStore = (uiCode) => { const t = taxOf(uiCode); return t ? t.code : uiCode; };
+  // Motifs medecin : la liste du backend quand elle arrive, sinon la table figee ci-dessus.
+  // Un contrat muet ne doit jamais rendre le scoring muet.
+  const taxonomySimple = () => (caps.taxonomy_simple && caps.taxonomy_simple.length
+    ? caps.taxonomy_simple : TAXONOMY_SIMPLE);
   const generators = () => caps.generators || [];
   const availableGenerators = () => generators().filter(g => g.available && g.model_served !== false);
 
@@ -119,6 +143,7 @@ Aucune logique scientifique ici : ni retrieval, ni prompt, ni seuil.
     verdicts: () => caps.verdicts || FALLBACK.verdicts,
     evalKinds: () => caps.eval_kinds || FALLBACK.eval_kinds,
     taxonomy: () => caps.taxonomy || [], taxOf, taxLabel, taxUi, taxStore,
+    taxonomySimple, taxonomySimpleFallback: TAXONOMY_SIMPLE,
     generators, availableGenerators,
     sourcesUseful: () => (caps.sources_useful && caps.sources_useful.length
       ? caps.sources_useful : [{ ui: "yes", code: "oui", label: "Oui" },

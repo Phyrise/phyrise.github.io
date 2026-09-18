@@ -247,3 +247,47 @@ body[data-tab="free"] .research-tools { display: none; }
 .kv-table.compact th,.kv-table.compact td{padding:.2rem .4rem;text-align:left}
 .kv-table.compact thead th{position:sticky;top:0;background:#f2f5f8}
 .taxcode{font:.72rem/1 ui-monospace,monospace;color:#5e6b79;background:#f2f5f8;padding:.05rem .25rem;border-radius:.2rem}
+
+/* ============================================================ deux niveaux de lecture
+   Mission clinician-ux §2 : l'ecran medecin tient en Question → Reponse → Sources → Decision →
+   Suivant. Tout le reste (trace, SHA, exports, comparaison, modeles) reste dans le DOM et n'est
+   masque que par cette regle. Rien n'est supprime : un element .lab-only est present, pas detruit. */
+body[data-ux="medecin"] .lab-only { display: none; }
+.lab-box { border-left: 4px solid var(--lab); }
+.lab-box > summary { font-weight: 700; }
+.lab-box[open] { background: linear-gradient(180deg, var(--lab-bg), transparent 120px); }
+.lab-tabs { margin-top: 10px; }
+.lab-entry > summary { cursor: pointer; font-weight: 650; font-size: 14px; color: var(--ink-2); }
+
+/* Une ligne de metadonnees sous le statut : « Réponse · 2,3 s · 1 source ». */
+.answer-meta { margin: 2px 0 10px; color: var(--muted); }
+.stage { margin: 10px 0 0; padding: 8px 10px; border: 1px dashed var(--line-2);
+  border-radius: 9px; font-size: 13.5px; color: var(--ink-2); background: var(--paper); }
+.frozen-config { align-items: center; gap: 8px; }
+.btn.mini { font-size: 12.5px; padding: 6px 9px; }
+
+/* Motifs cliniques : des raccourcis sur les 17 codes, pas une deuxieme taxonomie. */
+.chip-list { display: flex; flex-wrap: wrap; gap: 7px; margin: 9px 0 4px; }
+.chip { min-height: 40px; max-width: 100%; overflow-wrap: anywhere; padding: 7px 12px;
+  border: 1px solid var(--line-2); border-radius: 999px; background: var(--paper);
+  color: var(--ink); font: inherit; font-size: 13.5px; cursor: pointer; }
+.chip[aria-checked="true"] { background: var(--accent); border-color: var(--accent-dark);
+  color: #fff; }
+.chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Sources : une ligne chacune, le texte du registre ne s'affiche qu'a l'ouverture. */
+.source-row { border-top: 1px solid var(--line); padding: 5px 0; }
+.source-row > summary { cursor: pointer; font-size: 13.5px; display: flex; flex-wrap: wrap;
+  gap: 4px 8px; align-items: baseline; }
+.source-row .excerpt { margin: 6px 0 4px; }
+
+@media (max-width: 720px) {
+  .chip { width: 100%; text-align: left; }
+  .mast-top { gap: 8px; }
+  #uxToggle { width: 100%; }
+}
+
+/* Un détail replié ne doit rien rendre : sans cette règle, un `display` imposé par
+   notre propre CSS (grille, flex) reforme le contenu « caché » et l'écran clinique
+   réaffiche SHA, imports et listes de questions. */
+details:not([open]) > :not(summary) { display: none !important; }
