@@ -1,4 +1,5 @@
-const API_BASE = String(window.A2MED_API_BASE || "").replace(/\/$/, "");
+const API_BASE = String(document.body.dataset.api || window.A2MED_API_BASE || "")
+  .replace(/\/$/, "");
 const apiFetch = (path, init = {}) => {
   const headers = new Headers(init.headers || {});
   // Session proxy par en-tête (mobile : cookies tiers cross-site bloqués) ; le cookie
@@ -6,6 +7,7 @@ const apiFetch = (path, init = {}) => {
   const session = sessionStorage.getItem("a2med_proxy_session");
   if (session) headers.set("X-A2Med-Session", session);
   return fetch(API_BASE + path, { ...init, headers, credentials: "include" })
+    .catch((e) => { throw window.A2MEDContract.networkError(API_BASE, e); })
     .then(response => {
       // 401 alors qu'une session était posée = session morte (proxy redémarré,
       // token éphémère) → re-passer par le gate. 401 sans session = normal
@@ -434,11 +436,11 @@ async function askStream(q, mode = selectedMode(), sourceToken = null) {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question: q, mode, ...(selectedModel() ? { model: selectedModel() } : {}), ...(sourceToken ? { source_token: sourceToken } : {}) }) });
   if (!r.ok) {
-    let data = {};
-    try { data = await r.json(); } catch { /* réponse vide */ }
-    if (r.status === 404) return { routeAbsente: true };
-    return { erreur: data.error || `Le service a répondu ${r.status} sans message.`,
-      detail: data.detail || (data.code ? `code ${data.code}` : '') };
+    let text = '', data = null;
+    try { text = await r.text(); data = text ? JSON.parse(text) : {}; } catch { data = null; }
+    if (r.status === 404 && data && data.code === 'route') return { routeAbsente: true };
+    const err = window.A2MEDContract.httpError(r, text, data && data.trace_id);
+    return { erreur: err.message, detail: err.detail || '' };
   }
   $('progress').dataset.real = '1';
   $('progressNote').innerHTML = STREAM_NOTE;
@@ -474,11 +476,13 @@ async function askClassic(q, mode = selectedMode(), sourceToken = null) {
   const r = await apiFetch('/api/ask', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question: q, mode, ...(selectedModel() ? { model: selectedModel() } : {}), ...(sourceToken ? { source_token: sourceToken } : {}) }) });
-  let data = {};
-  try { data = await r.json(); } catch { /* réponse vide : on garde le message générique */ }
-  if (!r.ok) {
-    return { erreur: data.error || `Le service a répondu ${r.status} sans message.`,
-      detail: data.detail || (data.code ? `code ${data.code}` : '') };
+  let text = '', data = null;
+  try { text = await r.text(); data = text ? JSON.parse(text) : {}; } catch { data = null; }
+  if (!r.ok || data === null) {
+    // une panne du service reste nommée et actionnable (API 503 — générateur indisponible,
+    // JSON invalide — HTTP 502 reçu text/html …), jamais un message vague
+    const err = window.A2MEDContract.httpError(r, text, data && data.trace_id);
+    return { erreur: err.message, detail: err.detail || '' };
   }
   return { ok: true, data };
 }
@@ -663,3 +667,40 @@ $('healthRefresh').onclick = () => { healthTries = 0; checkHealth(); };
 renderHist();
 countChars();
 checkHealth();
+
+/* Contrat du service : modes, verdicts, et surtout la liste des génératrices QUI RÉPONDENT.
+   Le sélecteur de modèle n'est plus écrit dans le HTML : un modèle qui ne répond pas ne peut
+   pas être choisi (et aucun repli silencieux n'existe côté front). */
+function renderModelOptions(gens) {
+  const box = $('modelOptions');
+  if (!box || !gens.length) return;
+  box.innerHTML = gens.map((g, i) => `<label class="model-opt${g.available ? '' : ' off'}">
+      <input type="radio" name="model" value="${g.key}" ${i === 0 ? 'checked' : ''}
+        ${g.available ? '' : 'disabled'}>
+      <span>${g.label}<small>${g.experimental ? 'expérimental' : 'pipeline'}</small>
+        <small>${g.available ? (g.host || 'sondé ok') : 'INDISPONIBLE — non sélectionnable'}</small>
+      </span></label>`).join('');
+  const live = gens.filter((g) => g.available);
+  $('modelPicker').hidden = live.length < 2;
+  const checked = document.querySelector('input[name="model"]:checked');
+  if (!checked || checked.disabled) {
+    const first = box.querySelector('input[name="model"]:not([disabled])');
+    if (first) first.checked = true;
+  }
+}
+
+async function loadContract() {
+  const C = window.A2MEDContract;
+  if (!C) return;
+  const problem = C.apiBaseProblem(API_BASE);
+  if (problem) { notice(problem, 'configuration'); return; }
+  try {
+    const r = await apiFetch('/api/capabilities');
+    const text = await r.text();
+    if (!r.ok) throw C.httpError(r, text);
+    renderModelOptions(C.apply(JSON.parse(text)).generators || []);
+  } catch (e) {
+    notice('Contrat du service illisible : ' + e.message);
+  }
+}
+loadContract();

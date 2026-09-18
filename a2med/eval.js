@@ -25,7 +25,6 @@ const STATUS_LABELS = {
   INCONNU: ["statut non reconnu", "rien n'affiché faute de statut lisible"],
 };
 // Libellés français des codes d'erreur (les CODES restent la clé stable des agrégats).
-const TAXONOMY_LABELS = { RETRIEVAL_MISS: "Source pertinente absente", RERANKER_DROP: "Source écartée au classement", GENERATOR_OMISSION: "Élément important oublié", GENERATOR_OVERGENERALIZATION: "Réponse trop générale", IMPORTANT_CONDITION_MISSING: "Condition importante manquante", INCORRECT_FACT: "Fait incorrect", INAPPROPRIATE_ABSTENTION: "Abstention injustifiée", SHOULD_HAVE_ABSTAINED: "Aurait dû s’abstenir", EXCESSIVE_DETAIL: "Trop détaillé", SOURCE_PROVENANCE_ISSUE: "Problème de source", CITATION_SUPPORT_ISSUE: "Citation insuffisante", GOLD_PROBLEM: "Problème de référence", QUESTION_AMBIGUOUS: "Question ambiguë", OTHER: "Autre", APPLICABILITY_MISMATCH: "Cadre / population non applicable", CORPUS_GAP: "Corpus probablement muet", ANSWER_IMPRECISE: "Réponse pas assez précise" };
 
 const STATE = {
   health: null, benchmarks: [], benchmarksByName: {}, generators: [], taxonomy: [],
@@ -39,12 +38,17 @@ async function api(path, options = {}) {
   const session = sessionStorage.getItem("a2med_proxy_session");
   const headers = options.body ? { "Content-Type": "application/json" } : {};
   if (session) headers["X-A2Med-Session"] = session;
-  const response = await fetch(API_BASE + path, {
-    method: options.method || "GET",
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-    credentials: "include",
-  });
+  let response;
+  try {
+    response = await fetch(API_BASE + path, {
+      method: options.method || "GET",
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      credentials: "include",
+    });
+  } catch (e) {                      // tunnel éteint, DNS mort, base mal publiée : nommé, pas brut
+    throw window.A2MEDContract.networkError(API_BASE, e);
+  }
   if (response.status === 401) {
     // La page eval n'a pas de gate : 401 (visite froide ou session morte)
     // → retour à la page principale où le gate redemande le mot de passe.
@@ -52,13 +56,13 @@ async function api(path, options = {}) {
     location.href = "./";
   }
   const text = await response.text();
+  // Une erreur backend reste exploitable : « API 401 — session expirée », « API 503 — générateur
+  // indisponible », « JSON invalide — HTTP 502, reçu text/html ». Jamais un message fourre-tout.
+  if (!response.ok) throw window.A2MEDContract.httpError(response, text, STATE && STATE.lastTrace);
   let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = { error: "réponse non JSON du service", code: "serveur" }; }
-  if (!response.ok) {
-    const err = new Error((data && data.error) || `erreur HTTP ${response.status}`);
-    err.code = data && data.code; err.http = response.status; err.body = data;
-    throw err;
-  }
+  try { data = text ? JSON.parse(text) : null; }
+  catch { throw window.A2MEDContract.httpError(response, text, STATE && STATE.lastTrace); }
+  if (data && data.trace_id) STATE.lastTrace = data.trace_id;   // la prochaine erreur le citera
   return data;
 }
 
@@ -422,7 +426,51 @@ function techHtml(out) {
     ? "" : `<p class="fine">Aucun passage source n'est exposé par cette réponse : le mode sources
             n'a pas été utilisé et les sources citées sont affichées ci-dessus.</p>`;
   return `<table class="kv-table"><tbody>` + rows.map(([k, v]) =>
-    `<tr><th>${k}</th><td>${v ?? "—"}</td></tr>`).join("") + `</tbody></table>` + passages;
+    `<tr><th>${k}</th><td>${v ?? "—"}</td></tr>`).join("") + `</tbody></table>` + passages
+    + inspectionHtml(out);
+}
+
+/* Panneau d'inspection scientifique (mission eval-platform-v1 §7). Replié par défaut : la page
+   reste clinique. Tout est LU de la décharge déjà écrite par le run — aucun ré-appel de retrieval,
+   aucun ré-appel de générateur, aucun recalcul. Ce n'est pas une chaîne de pensée : le pipeline
+   tourne thinking OFF, il n'en produit pas. La « sortie brute » demandée ici = les items structurés
+   renvoyés par le modèle, avant validation par le registre. */
+function inspectionHtml(out) {
+  const lin = out.lineage || {}, raw = out.raw_generator_output || [], val = out.validated_output || [];
+  const n = (v) => (v === null || v === undefined || v === "" ? "—" : esc(String(v)));
+  const fused = (lin.fused_top50 || []).map((r) => `<tr>
+      <td class="mono">${esc(r.pid)}</td><td>${n(r.bm25_rank)}</td><td>${n(r.dense_rank)}</td>
+      <td>${n(r.rrf_rank)}</td><td>${n(r.rerank_rank)}</td>
+      <td>${esc(r.doc || "")}</td><td>${n(r.page)}</td></tr>`).join("");
+  const final = (lin.final || []).map((r) => `<tr>
+      <td><strong>${esc(r.alias || "")}</strong></td><td class="mono">${esc(r.pid || "")}</td>
+      <td>${esc(r.doc || "")}</td><td>${n(r.page)}</td><td>${esc(r.status || "—")}</td>
+      <td>${n(r.rerank_score)}</td><td>${n(r.chars)}</td></tr>`).join("");
+  const json = (v) => `<pre class="inspect-json">${esc(JSON.stringify(v, null, 1))}</pre>`;
+  return `<details class="inspect">
+    <summary>Inspection scientifique — retrieval, sortie brute du modèle, sortie validée</summary>
+    <p class="fine">Lecture de la décharge de ce run (<code>trace_id</code>
+      <code>${esc(out.trace_id || "—")}</code>) : aucun appel supplémentaire, aucun recalcul.
+      Le pipeline ne produit pas de raisonnement interne (thinking OFF) : ce qui suit est la sortie
+      observable du modèle et le résultat de la validation par le registre.</p>
+    <h4>Retrieval — ${lin.n_fused ?? "—"} fusionnés (BM25 ${lin.n_bm25_candidates ?? "—"} ·
+        dense ${lin.n_dense_candidates ?? "—"}), rangs dans les 50 fusionnés</h4>
+    <div class="inspect-scroll"><table class="kv-table compact"><thead><tr>
+      <th>passage</th><th>BM25</th><th>dense</th><th>RRF</th><th>rerank</th>
+      <th>document</th><th>page</th></tr></thead><tbody>${fused}</tbody></table></div>
+    <h4>Contexte final remis au générateur (E1–E5)</h4>
+    <table class="kv-table compact"><thead><tr><th>alias</th><th>passage_id</th><th>document</th>
+      <th>page</th><th>statut registre</th><th>score rerank</th><th>caractères</th></tr></thead>
+      <tbody>${final}</tbody></table>
+    <h4>Sortie structurée brute du générateur (${raw.length} item(s))</h4>
+    <p class="fine">Lue du run tel que l'a enregistré le pipeline gelé : items de la politique
+      d'auto-contrôle quand elle est active, sinon claims avec leurs alias d'évidence tels qu'ils
+      ont été écrits — avant déduplication et avant arbitrage du registre. Jamais un
+      raisonnement interne (<code>enable_thinking: false</code> : le pipeline n'en produit pas).</p>
+    ${raw.length ? json(raw) : '<p class="fine">Aucun item brut (mode sources : aucune génération).</p>'}
+    <h4>Sortie après validation par le registre (${val.length} affirmation(s))</h4>
+    ${val.length ? json(val) : '<p class="fine">Aucune affirmation validée rendue.</p>'}
+  </details>`;
 }
 
 function renderRunResult(out, meta = {}) {
@@ -461,11 +509,19 @@ function renderRunResult(out, meta = {}) {
   }
 }
 
+/* Les trois champs d'inspection viennent de la reponse de /api/ask : les renvoyer au moment de
+   l'enregistrement coute zero (aucun appel de calcul) et rend l'audit relisible plus tard. */
+function inspectFields(out) {
+  return { raw_generator_output: out.raw_generator_output || null,
+           validated_output: out.validated_output || null,
+           lineage: out.lineage || null };
+}
+
 function runRow(out) {
   const answer = out.answer || [];
   return {
     benchmark_id: (STATE.current || {}).id, question: out.question,
-    trace_id: out.trace_id,
+    trace_id: out.trace_id, ...inspectFields(out),
     benchmark_sha256: (STATE.session || {}).benchmark_sha256,
     run_id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     corpus_fingerprint: (STATE.health || {}).corpus_fingerprint,
@@ -508,12 +564,21 @@ async function saveRun(out) {
 }
 
 /* ------------------------------------------------------------------ scoring */
+function renderFreeModes() {   // valeurs = wire du contrat, texte = label + intention
+  const sel = $("freeMode"); if (!sel) return;
+  const keep = sel.value;
+  const modes = window.A2MEDContract.caps().modes || [];
+  if (modes.length) sel.innerHTML = modes.map((m) =>
+    `<option value="${esc(m.wire)}">${esc(m.label)} — ${esc(m.hint || "")}</option>`).join("");
+  if (keep) sel.value = keep;
+}
+
 function renderCodes() {
   const list = $("codeList");
   if (list.dataset.built) return;
   list.innerHTML = (STATE.taxonomy.length ? STATE.taxonomy : []).map((code) =>
     `<label class="check"><input type="checkbox" value="${esc(code)}">`
-    + `<span>${esc(TAXONOMY_LABELS[code] || code)}</span></label>`
+    + `<span>${esc(window.A2MEDContract.taxLabel(code))} <code class="taxcode">${esc(window.A2MEDContract.taxUi(code))}</code></span></label>`
   ).join("");
   list.dataset.built = "1";
 }
@@ -644,6 +709,8 @@ async function generateInto(article, key, label, question, retrieval, qid, blind
     savePanel(qid, label, key, {
       run_status: out.status, response: (out.answer || []).map((a) => `• ${a.text}`).join("\n"),
       answer_chars: chars, mode: out.mode,
+      // preuve persistée : tous les panneaux de cette comparaison partagent BIEN le même retrieval
+      source_token: retrieval.source_token, ...inspectFields(out),
       timings: { retrieval_s: (retrieval.timings || {}).retrieval_s,
                  generation_s: (out.timings || {}).generation_s, t_total_s: (out.timings || {}).t_total_s },
       generation_prompt_sha256: sha,
@@ -883,12 +950,12 @@ document.addEventListener("keydown", (event) => {
     if (event.key === "ArrowRight") { move(1); event.preventDefault(); }
     else if (event.key === "ArrowLeft") { move(-1); event.preventDefault(); }
     else if (["1", "2", "3", "4"].includes(event.key) && STATE.tab === "run") {
-      setVerdict(["correct", "partial", "incorrect", "cannot_assess"][Number(event.key) - 1]);
+      setVerdict(Object.values(window.A2MEDContract.verdictKeys())[Number(event.key) - 1]);
       event.preventDefault();
     } else if (event.key === "e") { $("noteBox").focus(); event.preventDefault(); }
   }
   if (STATE.tab === "free" && ["1", "2", "3", "4"].includes(event.key)) {
-    setFreeVerdict(["correct", "partial", "incorrect", "cannot_assess"][Number(event.key) - 1]);
+    setFreeVerdict(Object.values(window.A2MEDContract.verdictKeys())[Number(event.key) - 1]);
     event.preventDefault();
   }
   if (STATE.tab === "free" && !typing && (event.key === "ArrowRight" || event.key === "ArrowLeft")) {
@@ -943,14 +1010,21 @@ async function boot() {
   $("labRun").addEventListener("click", runLab);
   $("labExcluded").addEventListener("change", () => STATE.lastLab && renderLab(STATE.lastLab));
   showTab(STATE.tab);
+  const baseProblem = window.A2MEDContract.apiBaseProblem(API_BASE);
+  if (baseProblem) notice("sessionNotice", baseProblem, "error");
   await loadHealth();
   try {
-    const g = await api("/api/eval/generators");
-    STATE.generators = g.generators || [];
-    STATE.taxonomy = g.taxonomy || STATE.taxonomy;
+    // Une seule source de vérité pour les modes, verdicts, familles, taxonomie et modèles.
+    const caps = window.A2MEDContract.apply(await api("/api/capabilities"));
+    STATE.generators = caps.generators || [];
+    STATE.taxonomy = (caps.taxonomy || []).map((t) => t.code);
     renderGenerators();
     renderCodes();
-  } catch (e) { STATE.generators = []; renderGenerators(); }
+    renderFreeModes();
+  } catch (e) {
+    STATE.generators = []; renderGenerators();
+    notice("sessionNotice", "Contrat du service illisible : " + e.message, "error");
+  }
   try {
     await loadBenchmarks();
     await loadSessions();
@@ -1037,7 +1111,8 @@ function renderFreeCodes() {
   const box = $("freeCodes");
   if (box.dataset.built === (STATE.taxonomy || []).join(",")) return;
   box.innerHTML = (STATE.taxonomy || []).map((c) => `<label class="check">
-      <input type="checkbox" value="${esc(c)}"><span>${esc(TAXONOMY_LABELS[c] || c)}</span></label>`).join("");
+      <input type="checkbox" value="${esc(c)}">`
+      + `<span>${esc(window.A2MEDContract.taxLabel(c))} <code class="taxcode">${esc(window.A2MEDContract.taxUi(c))}</code></span></label>`).join("");
   box.dataset.built = (STATE.taxonomy || []).join(",");
 }
 
@@ -1065,7 +1140,10 @@ function freeOutFromRow(row) {
   return { question: row.question, status, source_only: row.run_status === "SOURCES_ONLY",
            mode: row.mode, answer: claims, sources, limitations: [], reason: "",
            has_provisional_source: !!row.has_provisional_source, timings: row.timings || {},
-           trace_id: row.trace_id, technique: { n_claims: row.n_claims, top5_pids: row.top5_passage_ids,
+           trace_id: row.trace_id,
+           lineage: row.lineage || null, raw_generator_output: row.raw_generator_output || null,
+           validated_output: row.validated_output || null,
+           technique: { n_claims: row.n_claims, top5_pids: row.top5_passage_ids,
              gen_model: row.generator_label, retrieval_profile: row.retrieval_profile,
              context_k: row.context_k, generation_prompt_sha256: row.generation_prompt_sha256 } };
 }
@@ -1107,6 +1185,7 @@ function freeRow(out, question) {
   const answer = out.answer || [];
   return {
     benchmark_id: out.trace_id || `F${Date.now()}`, question, trace_id: out.trace_id,
+    ...inspectFields(out),
     mode: out.mode, run_status: out.status || (out.source_only ? "SOURCES_ONLY" : null),
     response: answer.length ? answer.map((a) => `• ${a.text}`).join("\n")
       : (out.source_only ? "[SOURCES_ONLY — aucune réponse générée]" : out.reason || ""),

@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>A²-Med — évaluation &amp; laboratoire (expérimental)</title>
 <meta name="description" content="Plateforme de mesure : runs reproductibles, scoring humain, comparaison de générateurs, trace de retrieval. Aucun usage clinique.">
-<link rel="stylesheet" href="./eval.css?v=7992b0c6">
+<link rel="stylesheet" href="./eval.css?v=0af37b1e">
 </head>
-<body data-api="">
+<body data-api="https://mel-mandate-carter-erik.trycloudflare.com">
 
 <header class="masthead">
   <div class="wrap mast-top">
@@ -258,8 +258,9 @@
       </fieldset>
       <div class="row wrap-row yesno"><span>sources utiles ?</span>
         <label class="check"><input type="radio" name="freeSourcesUseful" value="oui">oui</label>
+        <label class="check"><input type="radio" name="freeSourcesUseful" value="partiel">partiellement</label>
         <label class="check"><input type="radio" name="freeSourcesUseful" value="non">non</label>
-        <label class="check"><input type="radio" name="freeSourcesUseful" value="na">na</label>
+        <label class="check"><input type="radio" name="freeSourcesUseful" value="na" checked>non évalué</label>
       </div>
       <div class="row wrap-row yesno"><span>indûment verbeuse ?</span>
         <label class="check"><input type="radio" name="freeVerbose" value="oui">oui</label>
@@ -328,6 +329,7 @@
   <p class="fine mono" id="footSession">aucune session chargée</p>
 </footer>
 
-<script src="./eval.js?v=dc4b66e9"></script>
+<script src="./a2med_contract.js?v=43104fb9"></script>
+<script src="./eval.js?v=40a5a417"></script>
 </body>
 </html>

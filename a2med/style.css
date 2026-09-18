@@ -274,3 +274,13 @@ summary:focus-visible, .state-retry:focus-visible, .hist:focus-visible {
   border-radius: 6px; background: var(--accent-bg); color: var(--accent-dark); font-size: 12px; font-weight: 600; }
 .result-timing { margin: 8px 0 16px; }
 .steps li[hidden] { display: none; }
+
+/* Sélecteur de modèle construit depuis /api/capabilities : un modèle qui ne répond pas reste
+   visible mais ne peut pas être choisi (mission eval-platform-v1 §5). */
+.model-opt.off{opacity:.55}
+.model-opt small{display:block;font-size:.7rem;color:#5e6b79}
+/* Le selecteur est construit depuis /api/capabilities : il porte desormais hot:port et
+   « experimental », donc il doit pouvoir passer a deux colonnes et couper. Un grid 4 colonnes
+   fixes (minmax(0,1fr) compris) faisait deborder le texte a 360 px — mesure, pas gout. */
+.model-options{grid-template-columns:repeat(auto-fit,minmax(104px,1fr))}
+.model-options span,.model-options small{overflow-wrap:anywhere;min-width:0}

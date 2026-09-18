@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>A²-Med — réponses médicales sourcées</title>
 <meta name="description" content="Question médicale, réponse française citée, extraite des recommandations SpILF locales.">
-<link rel="stylesheet" href="./style.css?v=1ee97dac">
+<link rel="stylesheet" href="./style.css?v=edad18b8">
 </head>
-<body>
+<body data-api="https://mel-mandate-carter-erik.trycloudflare.com">
 <div id="passwordGate" class="password-gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
   <form id="passwordForm" class="password-card">
     <h1 id="gateTitle">A2-Med</h1>
@@ -60,12 +60,7 @@
     </fieldset>
     <fieldset class="model-picker" id="modelPicker" hidden aria-describedby="modelHint">
       <legend>Modèle de test — expérimental</legend>
-      <div class="model-options">
-        <label><input type="radio" name="model" value="flash" checked><span>Qwen Flash<small>pipeline</small></span></label>
-        <label><input type="radio" name="model" value="qwen9b"><span>Qwen 9B<small>test</small></span></label>
-        <label><input type="radio" name="model" value="qwen4b"><span>Qwen 4B<small>test</small></span></label>
-        <label><input type="radio" name="model" value="qwen2b"><span>Qwen 2B<small>test</small></span></label>
-      </div>
+      <div class="model-options" id="modelOptions"><!-- rempli par /api/capabilities : seuls les modèles réellement répondants sont sélectionnables --></div>
       <p class="fine" id="modelHint">Même retrieval ; seule la génératrice change.</p>
     </fieldset>
     <div class="btn-row">
@@ -140,7 +135,7 @@
   <p class="fine mono" id="fingerprint"></p>
 </footer>
 
-<script>window.A2MED_API_BASE="https://mel-mandate-carter-erik.trycloudflare.com";</script>
-<script src="./app.js?v=f7609a89"></script>
+<script src="./a2med_contract.js?v=43104fb9"></script>
+<script src="./app.js?v=2a391676"></script>
 </body>
 </html>

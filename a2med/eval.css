@@ -233,3 +233,17 @@ select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
    vivent hors des panneaux d'onglets et restaient visibles au-dessus des questions libres. */
 body[data-tab="free"] #benchmarkHome, body[data-tab="free"] #sessionBar,
 body[data-tab="free"] .research-tools { display: none; }
+
+/* Inspection scientifique (mission eval-platform-v1 §7) : repliée par défaut, table qui scrolle
+   dans son propre conteneur (jamais la page), JSON borné visuellement. */
+.inspect{margin-top:.9rem;border:1px solid #d9e0e7;border-radius:.6rem;padding:.6rem .7rem;background:#fff}
+.inspect>summary{cursor:pointer;font-weight:650}
+.inspect h4{margin:.9rem 0 .35rem;font-size:.86rem}
+.inspect-scroll{max-height:18rem;overflow:auto;border:1px solid #e6ebf0;border-radius:.4rem}
+.inspect-json{max-height:16rem;overflow:auto;background:#f6f8fa;border:1px solid #e6ebf0;
+  border-radius:.4rem;padding:.5rem;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
+  white-space:pre-wrap;word-break:break-word;min-width:0}
+.kv-table.compact{font-size:.78rem;width:100%}
+.kv-table.compact th,.kv-table.compact td{padding:.2rem .4rem;text-align:left}
+.kv-table.compact thead th{position:sticky;top:0;background:#f2f5f8}
+.taxcode{font:.72rem/1 ui-monospace,monospace;color:#5e6b79;background:#f2f5f8;padding:.05rem .25rem;border-radius:.2rem}
