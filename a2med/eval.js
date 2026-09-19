@@ -119,7 +119,7 @@ async function loadHealth() {
   }
   const h = STATE.health;
   const pill = $("health");
-  const states = { pret: ["ok", "service local prêt"], demarrage: ["wait", "moteur en démarrage (~15 s)"],
+  const states = { pret: ["ok", "Service prêt"], demarrage: ["wait", "moteur en démarrage (~15 s)"],
                    indisponible: ["off", "moteur arrêté — aucune question possible"] };
   const [state, text] = states[h.state] || ["off", "état inconnu"];
   pill.dataset.state = state;
@@ -438,10 +438,72 @@ async function runQuestion() {
 function answerHtml(answer) {
   if (!answer || !answer.length) return "";
   return `<ol class="claims">` + answer.map((a) => `<li>${rich(a.text)}`
-    + ` <span class="refs">${(a.refs || []).map((r) => `<span class="ref">${esc(r)}</span>`).join("")}</span>`
+    // Un repère S1/S2 est un BOUTON : au clavier comme au tactile il ouvre la source correspondante
+    // (mission clinician-ux-002 §3). Aucun aperçu inline : juger d'abord, prouver ensuite.
+    + ` <span class="refs">${(a.refs || []).map((r) => `<button type="button" class="ref"`
+        + ` data-ref="${esc(r)}" title="Ouvrir la source ${esc(r)}">${esc(r)}</button>`).join("")}</span>`
     + (a.citation_valid ? "" : ' <span class="badge bad">citation non validée</span>') + `</li>`).join("")
     + `</ol>`;
 }
+
+/* Repère S# cliqué : on ouvre le bloc sources si replie, puis la ligne demandee, sans appel reseau.
+   Aucune requete n'est emise ici — le texte est deja dans la ligne rendue par /api/ask. */
+function jumpToSource(btn) {
+  const scope = btn.closest(".out") || document;
+  const box = scope.querySelector("details.sources");
+  if (box) box.open = true;
+  const row = scope.querySelector(`details.source-row[data-ref="${CSS.escape(btn.dataset.ref)}"]`);
+  if (!row) return;                       // repere sans ligne de source : on ne casse rien
+  row.open = true;
+  row.classList.add("flash");
+  window.setTimeout(() => row.classList.remove("flash"), 1200);
+  row.scrollIntoView({ behavior: "smooth", block: "center" });
+  const sum = row.querySelector("summary");
+  if (sum) sum.focus({ preventScroll: true });
+}
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest && e.target.closest("button.ref[data-ref]");
+  if (btn) { e.preventDefault(); jumpToSource(btn); }
+});
+
+/* ---------------------------------------------------------------------------
+   Trace methodologique (clinician-ux-002 §2) : est-ce que l'evaluateur a ouvert la preuve
+   AVANT de donner son premier jugement sur la question ? Deux booleens, aucun contenu saisi,
+   aucun raisonnement, aucun score modifie. Reinitialise a chaque question affichee.
+   ------------------------------------------------------------------------- */
+const METH = { t0: 0, inspect: null, sources: null, scored: null, dejaJuge: false };
+
+function resetMethod(dejaJuge) {
+  METH.t0 = performance.now(); METH.inspect = null; METH.sources = null; METH.scored = null;
+  METH.dejaJuge = !!dejaJuge;
+}
+
+// `toggle` ne bouge pas : listener en phase de capture, une seule fois, sur tout le document.
+document.addEventListener("toggle", (e) => {
+  const el = e.target;
+  if (!el || !el.open) return;
+  const now = Math.round(performance.now() - METH.t0);
+  if ((el.id === "runInspectBox" || el.id === "freeInspectBox") && METH.inspect == null) {
+    METH.inspect = now;
+  } else if ((el.classList.contains("sources") || el.id === "runSources" || el.id === "freeSources")
+             && METH.sources == null) {
+    METH.sources = now;
+  }
+}, true);
+
+function methodePayload() {
+  const sc = METH.scored;
+  return {
+    deja_jugee_a_l_ouverture: !!METH.dejaJuge,
+    inspection_opened_before_first_score: METH.inspect != null && (sc == null || METH.inspect < sc),
+    sources_opened_before_first_score: METH.sources != null && (sc == null || METH.sources < sc),
+    inspection_first_open_ms: METH.inspect, sources_first_open_ms: METH.sources,
+    first_score_ms: sc,
+  };
+}
+
+// le premier envoi de score de la visite fixe la reference « avant / apres le jugement »
+function markFirstScore() { if (METH.scored == null) METH.scored = Math.round(performance.now() - METH.t0); }
 
 function sourcesHtml(sources, note) {
   if (!sources || !sources.length) return "";
@@ -450,7 +512,7 @@ function sourcesHtml(sources, note) {
   return `<details class="sources"><summary>${sources.length} source${sources.length > 1 ? "s" : ""}`
     + ` <span class="fine">${esc(note || "")}</span></summary>` + sources.map((s) => {
       const prov = s.source_status === "prepublication_recommendation";
-      return `<details class="source-row"><summary><strong>${esc(s.ref || "")}</strong>`
+      return `<details class="source-row" data-ref="${esc(s.ref || "")}"><summary><strong>${esc(s.ref || "")}</strong>`
         + ` ${esc(s.document || "")} <span class="mono">p. ${esc(s.page ?? "—")}</span>`
         + ` <span class="badge ${prov ? "warn" : "ok"}">${prov ? "pré-publication" : "publié final"}</span>`
         + `</summary><p class="excerpt">${rich(s.excerpt)}</p>`
@@ -556,6 +618,11 @@ function renderRunResult(out, meta = {}) {
     sourceOnly ? "classés par pertinence, sans génération" : "citées par la réponse");
   $("runInspect").innerHTML = inspectionHtml(out);
   $("runTech").innerHTML = techHtml(out);
+  // juger d'abord, inspecter ensuite (clinician-ux-002 §1) : une ouverture ne doit pas survivre
+  // a la question suivante, sinon la question 4 se juge avec les rangs et les scores a l'ecran.
+  $("runInspectBox").open = false;
+  $("detailCodesBox").open = false;
+  resetMethod(!!((STATE.runs[(STATE.current || {}).id] || {}).verdict));
   STATE.lastRun = out;
   if (meta.record !== false) {
     STATE.progress[STATE.current && STATE.current.id] = {
@@ -736,6 +803,7 @@ async function postScore(patch) {
   if (!STATE.session) return notice("runNotice", "Aucune session : rien n'est enregistré.", "warn");
   if (!STATE.current) return;
   const body = { benchmark_id: STATE.current.id, ...patch };
+  if ("verdict" in patch) { markFirstScore(); body.methode = methodePayload(); }
   try {
     const res = await api(`/api/eval/session/${encodeURIComponent(STATE.session.name)}/score`,
       { method: "POST", body });
@@ -1352,6 +1420,8 @@ function renderFree(out, meta = {}) {
     + `recherche ${(out.technique || {}).retrieval_profile || "hybrid"} · `
     + `${(out.technique || {}).context_k || 5} passages`;
   $("freeInspect").innerHTML = inspectionHtml(out);
+  $("freeInspectBox").open = false;          // meme regle qu'en benchmark : replie a chaque question
+  resetMethod(!!((STATE.freeRows[STATE.freeCurrent] || {}).verdict));
   const banner = $("freeProvisional");
   banner.hidden = !out.has_provisional_source;
   banner.textContent = "Au moins une source citée est une recommandation en cours de publication : "
@@ -1477,6 +1547,7 @@ async function postFreeScore(patch) {
                  verdict: row.verdict || null, codes: currentFreeCodes(), note: $("freeNote").value,
                  sources_useful: freeRadio("freeSourcesUseful"), verbose: freeRadio("freeVerbose"),
                  ...patch };
+  markFirstScore(); body.methode = methodePayload();
   try {
     await api(`/api/eval/session/${encodeURIComponent(STATE.freeSession.name)}/score`,
       { method: "POST", body });

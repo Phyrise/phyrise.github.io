@@ -136,10 +136,11 @@ async function checkHealth() {
       setPill('degrade', 'Moteur de recherche à relancer', detail);
       return;
     }
-    setPill('pret', 'Serveur Sparka', detail);
+    setPill('pret', 'Service prêt', detail);   // même mot que /eval ; « Sparka » est un nom de machine,
+                                               // il n'a rien à faire sur une page publique
   } catch {
     setPill('indisponible', 'Service indisponible',
-      'La page n’a pas pu joindre le service local (port 8050).');
+      'La page n’a pas pu joindre le service de calcul.');   // ni port ni hôte sur un écran public
   }
 }
 
