@@ -83,9 +83,14 @@ Aucune logique scientifique ici : ni retrieval, ni prompt, ni seuil.
     }
     const detail = (data && (data.error || data.detail)) || "";
     const code = (data && data.code) || "";
-    const fond = HTTP_FR[response.status] || detail || `erreur HTTP ${response.status}`;
+    // Une panne TECHNIQUE de la génératrice a son propre texte : « Réponse incomplète — génération
+    // interrompue » doit se lire plutôt qu'un « erreur serveur » fourre-tout. Le code machine, lui,
+    // ne change pas : les agrégats et les clients existants restent comparables.
+    const technique = (data && data.message_technique) || "";
+    const fond = technique || HTTP_FR[response.status] || detail || `erreur HTTP ${response.status}`;
     const err = new Error(`API ${response.status} — ${fond}${code ? ` (${code})` : ""}${trace}`);
     err.code = code; err.http = response.status; err.detail = detail; err.body = data;
+    err.technical_status = (data && data.technical_status) || "";
     return err;
   }
 

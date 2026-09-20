@@ -469,7 +469,10 @@ async function askStream(q, mode = selectedMode(), sourceToken = null) {
       out = data;
       return true; // validated result is complete; do not wait for SSE close
     } else if (ev === 'error') {
-      erreur = { message: data.error, detail: data.detail || (data.code ? `code ${data.code}` : '') };
+      // panne technique : le texte technique passe avant le texte générique, le code reste affiché
+      erreur = { message: data.message_technique || data.error,
+                 detail: data.detail || (data.code ? `code ${data.code}` : ''),
+                 technical_status: data.technical_status || '' };
       return true;
     }
   });
