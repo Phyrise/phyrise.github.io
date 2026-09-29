@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Retour expert — A²-Med</title>
+<meta name="description" content="Donner un avis médical sur une affirmation et les passages cités. Une page, une décision.">
+<link rel="stylesheet" href="./expert.css?v=710d1187">
+</head>
+<body data-api="https://panels-hearing-cbs-even.trycloudflare.com">
+
+<header class="barre">
+  <a class="retour" href="./" title="Revenir à A²-Med">‹ A²-Med</a>
+  <span class="titre" id="titre-page">Retour expert</span>
+  <span class="progression" id="progression" hidden>
+    <span id="compteur">— / —</span>
+    <span class="piste" aria-hidden="true"><span class="remplissage" id="remplissage"></span></span>
+  </span>
+</header>
+
+<main>
+
+<!-- ① identification : un seul champ, rien d'autre -->
+<section id="ecran-nom" class="carte" hidden>
+  <h1>Retour expert</h1>
+  <p class="intro">Vous n'avez besoin de rien savoir du système. Pour chacune des pages suivantes :
+    une affirmation, les passages qui sont censés la fonder, et une seule question à trancher.</p>
+  <label class="champ" for="expert-id">Prénom / initiales</label>
+  <input id="expert-id" type="text" maxlength="40" autocomplete="name" placeholder="ex. A. K.">
+  <button class="btn majeure" id="valider-nom">Commencer</button>
+  <p class="note" id="nom-aide">Votre nom ne quitte pas ce service. Il sert uniquement à reprendre
+    là où vous vous étiez arrêté.</p>
+</section>
+
+<!-- ② mot de passe : uniquement si la frontière publique demande une session -->
+<section id="ecran-auth" class="carte" hidden>
+  <h1>Accès</h1>
+  <p class="intro">Ce service est protégé par le même mot de passe que le reste d'A²-Med.</p>
+  <label class="champ" for="motdepasse">Mot de passe</label>
+  <input id="motdepasse" type="password" autocomplete="current-password">
+  <button class="btn majeure" id="valider-mdp">Entrer</button>
+  <p class="erreur" id="auth-erreur" hidden></p>
+</section>
+
+<!-- ③ liste des campagnes -->
+<section id="ecran-liste" hidden>
+  <h1>Retour expert</h1>
+  <p class="intro">Une campagne = une seule question à trancher, item par item.</p>
+  <div id="campagnes" class="campagnes"></div>
+  <p class="erreur" id="liste-erreur" hidden></p>
+</section>
+
+<!-- ④ l'item : UNE décision -->
+<section id="ecran-item" class="item" hidden>
+  <p class="sur-titre" id="item-source"></p>
+
+  <h2 class="libelle">Question</h2>
+  <p class="question" id="item-question"></p>
+
+  <h2 class="libelle">Affirmation à vérifier</h2>
+  <p class="affirmation" id="item-claim"></p>
+
+  <h2 class="libelle">Preuves citées</h2>
+  <div id="item-evidence" class="evidences"></div>
+
+  <details class="pliable" id="plieuse-reponse">
+    <summary>Voir la réponse générée complète</summary>
+    <p class="reponse" id="item-reponse"></p>
+    <p class="note">Texte produit par le système, donné à titre indicatif. Ce n'est pas lui qu'on
+      vous demande de juger.</p>
+  </details>
+
+  <p class="question-cognitive" id="item-consigne"></p>
+
+  <div class="verdicts" role="group" aria-label="Votre verdict">
+    <button class="btn verdict v-supportee"  data-verdict="SUPPORTED">✓ Supportée</button>
+    <button class="btn verdict v-non"        data-verdict="UNSUPPORTED">✕ Non supportée</button>
+    <button class="btn verdict v-ambigue"    data-verdict="AMBIGUOUS">? Ambiguë / impossible à trancher</button>
+  </div>
+
+  <details class="pliable" id="plieuse-note">
+    <summary>Note facultative</summary>
+    <textarea id="item-note" maxlength="2000" rows="3"
+              placeholder="Une phrase suffit si vous voulez. Vous pouvez aussi ne rien écrire."></textarea>
+  </details>
+
+  <div class="bas">
+    <button class="btn lien" id="btn-precedent" title="Item précédent (←)">← Précédent</button>
+    <button class="btn lien" id="btn-passer" title="Ne pas répondre à cet item (S)">Passer</button>
+    <button class="btn lien" id="btn-suivant" title="Item suivant (→)">Suivant →</button>
+  </div>
+  <p class="raccourcis" aria-hidden="true">1 supportée · 2 non supportée · 3 ambiguë · S passer · ← → naviguer</p>
+  <p class="erreur" id="item-erreur" hidden></p>
+</section>
+
+<!-- ⑤ fin de campagne -->
+<section id="ecran-fin" class="carte" hidden>
+  <h1>Merci — c'est terminé.</h1>
+  <p class="intro" id="fin-resume"></p>
+  <p class="note">Vos réponses sont enregistrées. Vous pouvez les modifier en revenant dans la
+    campagne : la dernière valeur enregistrée est celle qui compte.</p>
+  <button class="btn majeure" id="btn-retour-liste">Retour aux campagnes</button>
+</section>
+
+</main>
+
+<div class="confirmation" id="confirmation" role="status" aria-live="polite" hidden>Enregistré</div>
+<p class="pied"><a href="./">A²-Med</a> · revue expert — vos avis ne modifient pas les réponses du
+  système, ils sont collectés pour être relus.</p>
+
+<script src="./a2med_contract.js?v=a77957cf"></script>
+<script src="./expert.js?v=210e2a62"></script>
+</body>
+</html>

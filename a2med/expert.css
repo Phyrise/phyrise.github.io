@@ -1,0 +1,171 @@
+/* Revue expert — mobile first (360 / 390 / 412 / 768 / desktop).
+   Règles tenues par ce fichier : aucune largeur fixe au-dessus de 320 px, aucun débordement
+   horizontal, zones tactiles ≥ 44 px, texte des preuves jamais en dessous de 15 px. */
+:root {
+  --fond: #f6f7f9;
+  --carte: #ffffff;
+  --encre: #14181d;
+  --ence-douce: #5d6874;
+  --filet: #dfe4ea;
+  --accent: #0f6b5c;
+  --accent-fonce: #0b5347;
+  --supportee: #0f6b5c;
+  --non: #a3320b;
+  --ambigue: #6b5b00;
+  --rayon: 12px;
+  --pas: 16px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--fond); color: var(--encre);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* overflow-x caché plutôt que permis : un texte long ne doit jamais faire défiler la page
+     de côté ; tout casse à l'intérieur grâce aux règles `overflow-wrap` plus bas. */
+  overflow-x: hidden;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+main { max-width: 720px; margin: 0 auto; padding: 0 var(--pas) 40px; }
+
+/* ------------------------------------------------------------ barre haute, collante et légère */
+.barre {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(246, 247, 249, .96); backdrop-filter: blur(4px);
+  border-bottom: 1px solid var(--filet);
+  padding: 10px var(--pas); min-height: 52px;
+}
+.barre .retour { color: var(--ence-douce); text-decoration: none; font-size: 14px; }
+.barre .retour:hover { color: var(--accent); }
+.barre .titre { font-weight: 600; font-size: 15px; }
+.barre .progression { margin-left: auto; display: flex; align-items: center; gap: 8px;
+  font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ence-douce); }
+.piste { width: 72px; height: 4px; border-radius: 4px; background: var(--filet); overflow: hidden; }
+.remplissage { display: block; height: 100%; width: 0; background: var(--accent); transition: width .18s; }
+
+/* ------------------------------------------------------------ cartes simples */
+h1 { font-size: 22px; margin: 22px 0 6px; }
+h2.libelle { font-size: 12px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ence-douce); margin: 22px 0 6px; font-weight: 600; }
+.carte { background: var(--carte); border: 1px solid var(--filet); border-radius: var(--rayon);
+  padding: 18px; margin-top: 14px; }
+.intro { color: var(--ence-douce); margin: 4px 0 18px; }
+.note { color: var(--ence-douce); font-size: 13px; }
+.erreur { color: var(--non); font-size: 14px; background: #fbeee9; border: 1px solid #f0cfc4;
+  border-radius: 10px; padding: 10px 12px; margin-top: 12px; overflow-wrap: anywhere; }
+
+/* un seul champ, grande zone tactile */
+.champ { display: block; font-size: 14px; color: var(--ence-douce); margin-bottom: 6px; }
+input, textarea {
+  width: 100%; font: inherit; padding: 13px 14px; border: 1px solid var(--filet);
+  border-radius: 10px; background: #fff; color: var(--encre);
+}
+textarea { margin-top: 8px; }
+input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus-visible,
+a:focus-visible { outline: 3px solid #7fb6ab; outline-offset: 2px; }
+
+/* ------------------------------------------------------------ boutons */
+.btn {
+  display: block; width: 100%; min-height: 52px; margin: 10px 0 0; padding: 14px 16px;
+  font: inherit; font-weight: 600; border-radius: var(--rayon); border: 1px solid transparent;
+  background: #fff; color: var(--encre); cursor: pointer; text-align: center;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.btn.majeure { background: var(--accent); color: #fff; }
+.btn.majeure:active { background: var(--accent-fonce); }
+.btn[disabled] { opacity: .55; cursor: progress; }
+.btn.lien { background: transparent; color: var(--ence-douce); font-weight: 500;
+  font-size: 15px; min-height: 44px; border-color: transparent; }
+
+/* les trois verdicts : pleine largeur sur mobile, une rangée seulement à partir de 768 px */
+.verdicts { margin-top: 18px; }
+.verdict { border-width: 2px; text-align: left; }
+.v-supportee { border-color: var(--supportee); color: var(--supportee); }
+.v-non { border-color: var(--non); color: var(--non); }
+.v-ambigue { border-color: var(--ambigue); color: var(--ambigue); }
+.verdict[aria-pressed="true"] { color: #fff; }
+.v-supportee[aria-pressed="true"] { background: var(--supportee); }
+.v-non[aria-pressed="true"] { background: var(--non); }
+.v-ambigue[aria-pressed="true"] { background: var(--ambigue); }
+
+/* ------------------------------------------------------------ l'item */
+.item { padding-top: 4px; }
+.sur-titre { font-size: 13px; color: var(--ence-douce); margin: 14px 0 0; }
+.question { font-size: 17px; color: var(--ence-douce); margin: 0; overflow-wrap: anywhere; }
+.affirmation {
+  background: var(--carte); border: 2px solid var(--encre); border-radius: var(--rayon);
+  padding: 16px; font-size: 19px; line-height: 1.45; font-weight: 600; margin: 0;
+  overflow-wrap: anywhere;
+}
+.evidences { display: grid; gap: 10px; }
+.evidence { background: var(--carte); border: 1px solid var(--filet); border-radius: var(--rayon);
+  padding: 12px 14px; overflow-wrap: anywhere; }
+.evidence .source { font-size: 12px; color: var(--ence-douce); margin: 0 0 6px;
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.evidence .alias { font-weight: 700; color: var(--accent); }
+.evidence .doc { overflow-wrap: anywhere; }
+.evidence p { margin: 0; font-size: 15.5px; white-space: pre-wrap; }
+.question-cognitive { font-size: 18px; font-weight: 600; margin: 22px 0 0; }
+
+/* pliables, fermés par défaut */
+.pliable { margin-top: 14px; border: 1px solid var(--filet); border-radius: var(--rayon);
+  background: var(--carte); }
+.pliable summary { padding: 12px 14px; min-height: 44px; display: flex; align-items: center;
+  color: var(--ence-douce); font-size: 15px; cursor: pointer; list-style: none; }
+.pliable summary::before { content: "▾"; margin-right: 8px; }
+.pliable[open] summary::before { content: "▴"; }
+.pliable .reponse { padding: 0 14px; font-size: 15px; white-space: pre-wrap;
+  overflow-wrap: anywhere; }
+.pliable .note { padding: 0 14px 12px; margin: 0; }
+#plieuse-note textarea { margin: 0 14px 14px; width: calc(100% - 28px); }
+
+.bas { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 18px;
+  border-top: 1px solid var(--filet); padding-top: 6px; }
+.bas .btn.lien { flex: 1 1 30%; min-width: 108px; }
+.raccourcis { display: none; color: var(--ence-douce); font-size: 12.5px; text-align: center;
+  margin: 6px 0 0; }
+.pied { max-width: 720px; margin: 0 auto; padding: 0 var(--pas) 28px; color: var(--ence-douce);
+  font-size: 12.5px; }
+.pied a { color: var(--ence-douce); }
+
+/* confirmation discrète, jamais une modale */
+.confirmation {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  background: var(--encre); color: #fff; font-size: 14px; padding: 9px 16px; border-radius: 999px;
+  opacity: 0; transition: opacity .18s; pointer-events: none; z-index: 9;
+}
+.confirmation.visible { opacity: .94; }
+
+/* ------------------------------------------------------------ liste des campagnes */
+.campagnes { display: grid; gap: 12px; }
+.campagne { background: var(--carte); border: 1px solid var(--filet); border-radius: var(--rayon);
+  padding: 16px; text-align: left; font: inherit; cursor: pointer; width: 100%; }
+.campagne .nom { font-size: 18px; font-weight: 600; margin: 0; }
+.campagne .desc { color: var(--ence-douce); margin: 6px 0 10px; font-size: 15px; }
+.campagne .meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+.etat { border-radius: 999px; padding: 3px 10px; font-weight: 600; font-size: 12.5px;
+  border: 1px solid var(--filet); color: var(--ence-douce); }
+.etat.encours { border-color: var(--accent); color: var(--accent); }
+.etat.fini { border-color: var(--supportee); color: var(--supportee); }
+
+/* ------------------------------------------------------------ 768 px et plus : deux colonne? non.
+   On garde une colonne (une décision par écran), on aère seulement. */
+@media (min-width: 768px) {
+  main { padding-bottom: 56px; }
+  .affirmation { font-size: 20px; }
+  .verdicts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .verdict { text-align: center; }
+  .raccourcis { display: block; }          /* les raccourcis ne s'affichent qu'au clavier */
+  .confirmation { bottom: 28px; }
+}
+@media (max-width: 359px) {                /* 360 px : on réduit le pas, pas la lisibilité */
+  :root { --pas: 12px; }
+  .affirmation { font-size: 18px; padding: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .remplissage, .confirmation { transition: none; }
+}
+@media (prefers-contrast: more) {
+  :root { --ence-douce: #333b44; --filet: #9aa5b1; }
+}
