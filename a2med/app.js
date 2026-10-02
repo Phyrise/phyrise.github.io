@@ -24,28 +24,58 @@ const gate = document.getElementById("passwordGate");
 const passwordForm = document.getElementById("passwordForm");
 const passwordInput = document.getElementById("sitePassword");
 const passwordError = document.getElementById("passwordError");
+const passwordSend = document.getElementById("passwordSend");
+const QUESTION_EN_ATTENTE = "a2med_pending_question";
+
+/* Trois pannes différentes, trois messages différents (mission web-clinician-v3-001) :
+   un mauvais mot de passe n'est pas une coupure réseau, et une session expirée n'est pas
+   une page cassée. Avant, tout passait par « Mot de passe incorrect ». */
+function gateMessage(status, trace) {
+  if (status === 0) return ["Le service n'a pas répondu (réseau coupé, service arrêté ou tunnel "
+    + "fermé). Ce n'est pas le mot de passe.", "réseau"];
+  if (status === 401) return ["Mot de passe incorrect.", "401"];
+  if (status === 403) return ["Accès refusé par le service d'authentification.", "403"];
+  if (status >= 500) return ["Le service d'authentification est en panne (" + status
+    + "). Réessayez dans quelques instants.", String(status)];
+  return ["Le service d'authentification a répondu " + status + ".", String(status)];
+}
+
 async function unlock() {
   passwordError.hidden = true;
+  if (passwordSend) passwordSend.disabled = true;
+  let status = 0, payload = {};
   try {
     const response = await fetch(API_BASE + "/__auth", {
       method: "POST",
-      headers: {"Content-Type": "application/json"},
+      headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({password: passwordInput.value})
+      body: JSON.stringify({ password: passwordInput.value })
     });
-    if (!response.ok) throw new Error("bad password");
-    const payload = await response.json().catch(() => ({}));
-    if (payload.session) sessionStorage.setItem("a2med_proxy_session", payload.session);
-    sessionStorage.setItem("a2med_test_unlocked", "1");
-    gate.remove();
+    status = response.status;
+    payload = await response.json().catch(() => ({}));
   } catch {
+    status = 0;                                          // fetch a jeté : pas de service joignable
+  } finally {
+    if (passwordSend) passwordSend.disabled = false;
+  }
+  if (status !== 200 || !payload || payload.ok === false) {
+    const [message, detail] = gateMessage(status, payload.trace_id);
+    passwordError.textContent = message;
     passwordError.hidden = false;
     passwordInput.select();
+    passwordInput.focus();
+    return;
   }
+  if (payload.session) sessionStorage.setItem("a2med_proxy_session", payload.session);
+  sessionStorage.setItem("a2med_test_unlocked", "1");
+  gate.remove();
+  demarrerApresAuthentification();                       // santé + contrat, maintenant qu'on est autorisé
 }
+
 if (sessionStorage.getItem("a2med_test_unlocked") === "1") gate.remove();
-passwordForm.addEventListener("submit", event => { event.preventDefault(); unlock(); });
-if (gate.isConnected) passwordInput.focus();
+if (passwordForm) passwordForm.addEventListener("submit", event => { event.preventDefault(); unlock(); });
+/* Le focus et l'état d'attente de la pastille sont posés à la fin du fichier (avec le reste de
+   l'initialisation) : ici, `$` et le DOM de la page ne sont pas encore tous définis. */
 
 /* A²-Med UI V1 — aucun framework, aucun CDN, aucune donnée envoyée ailleurs que la
    question elle-même. Le front ne fabrique jamais de contenu médical : il affiche les
@@ -62,21 +92,19 @@ const HIST = 'a2med_ui_v1_history';
 /* Route de streaming. `false` = approche B : plus aucun token n’est affiché, la page
    revient à la requête unique /api/ask (le flux reste utilisable côté serveur). */
 const USE_STREAM = true;
-/* Le brouillon n’est JAMAIS une réponse : il est étiqueté, tenu à l’écart de la carte
-   validée, et effacé quand la validation conclut à l’abstention ou échoue. */
-const DRAFT = {
-  redaction: ['Brouillon du générateur — rédaction en cours, AUCUNE vérification faite',
-    'Texte brut, tel que le générateur l’écrit, avant le contrôle des citations et avant le '
-    + 'statut final. Ne pas s’en appuyer dessus. La réponse médicale est la carte validée '
-    + 'affichée à la fin.'],
-  remplace: ['Brouillon terminé — remplacé par la réponse validée ci-dessous',
-    'Le texte ci-dessous est le brouillon brut ; seules les affirmations de la carte validée '
-    + 'ont passé le contrôle des citations.'],
-  ecarte: ['Brouillon ÉCARTÉ par la validation — à ne pas lire comme réponse',
-    'Le contrôle a conclu à une abstention (ou a échoué) : rien de ce brouillon ne vaut '
-    + 'réponse, il n’est donc pas conservé à l’écran.'],
+
+/* Une seule carte, plusieurs états (contrat de CONTRACTS.md). Le texte en rédaction vit DANS
+   `#answerCard` : la carte ne disparaît plus, elle change d'état. `done` reste le seul à
+   écrire la réponse valide. */
+const VUES = ['idle', 'search', 'drafting', 'checking', 'result', 'abstention', 'error'];
+const ETATS = {
+  search: 'Recherche dans les recommandations…',
+  drafting: 'Rédaction en cours — non vérifiée',
+  checking: 'Vérification des citations…',
 };
 const STREAM_NOTE = 'Rédaction de la réponse en cours… <span id="elapsed"></span>';
+const PREFS = 'a2med_ui_v1_prefs';
+const PROVISIONAL = 'prepublication_recommendation';   // même valeur que tools/a2med_web.py
 const MAXQ_DEFAULT = 500;
 const BUSY_MSG = 'Une réponse est déjà en cours. Attendez sa fin avant d’envoyer '
   + 'une nouvelle question.';
@@ -90,8 +118,27 @@ let busy = false, current = null, tickTimer = null, t0 = 0, maxQ = MAXQ_DEFAULT;
 let modelOptions = {};
 let repliNote = '';                                          // « reporté sur … », écrit en clair
 let modelLabels = {};                       // cle -> libelle humain, pour la ligne de reglage
-let streamStats = null, resultWas = null;
-let healthTimer = null, healthTries = 0;
+let streamStats = null;
+let healthTimer = null, healthTries = 0, contratCharge = false;
+let apercu = null, trameEnAttente = null, dernierBalayage = 0, lecteurEnBas = true;
+let prefsMode = null;            // modèle préféré, tant que /api/capabilities n'est pas arrivé
+
+/* sessionStorage/localStorage peuvent refuser d'écrire (navigation privée, cookies bloqués) :
+   une page médicale ne doit pas casser pour un réglage non sauvegardé. */
+const SEC = {
+  get(scope, cle, defaut) {
+    try { const v = (scope === 'local' ? localStorage : sessionStorage).getItem(cle);
+          return v === null ? defaut : JSON.parse(v); }
+    catch { return defaut; }
+  },
+  set(scope, cle, valeur) {
+    try { (scope === 'local' ? localStorage : sessionStorage).setItem(cle, JSON.stringify(valeur)); }
+    catch { /* plein ou refusé : on s'en passe */ }
+  },
+  del(scope, cle) {
+    try { (scope === 'local' ? localStorage : sessionStorage).removeItem(cle); } catch { }
+  },
+};
 
 /* ------------------------------------------------------------ santé du service */
 function setPill(state, text, title) {
@@ -107,8 +154,7 @@ async function checkHealth() {
   try {
     const r = await apiFetch('/api/health');
     const h = await r.json();
-    if (!r.ok) throw new Error(String(r.status));
-    maxQ = (h.limits && h.limits.question_chars) || MAXQ_DEFAULT;
+    if (!r.ok) throw new Error(String(r.status));    maxQ = (h.limits && h.limits.question_chars) || MAXQ_DEFAULT;
     modelOptions = h.model_options || {};
     $("modelPicker").hidden = Object.keys(modelOptions).length < 2;
     $('q').maxLength = maxQ;
@@ -118,9 +164,11 @@ async function checkHealth() {
       `génératrice ${gen.ok ? 'ok' : 'indisponible'}`,
       h.corpus_fingerprint ? `empreinte ${String(h.corpus_fingerprint).slice(0, 8)}` : '']
       .filter(Boolean).join(' · ');
+    /* Millésime : l'empreinte du corpus réellement chargé, pas une date écrite en dur dans
+       la page (une page publiée en mars afficherait encore « août 2026 »). */
     $('fingerprint').textContent = h.corpus_fingerprint
-      ? `Corpus SPILF · août 2026 · ${String(h.corpus_fingerprint).slice(0, 12)}`
-      : 'Corpus SPILF · août 2026';
+      ? `Corpus SPILF · empreinte ${String(h.corpus_fingerprint).slice(0, 12)}`
+      : 'Corpus SPILF · empreinte non communiquée';
     if (h.state === 'demarrage') {
       setPill('demarrage', 'Initialisation des modèles…', 'Le moteur se démarre une fois '
         + 'par séance (environ 15 s : corpus et index résidents, worker GPU distant).');
@@ -151,10 +199,45 @@ function pollHealth() {                                   // léger, seulement p
 }
 
 /* ------------------------------------------------------------ rendu réponse */
-function chips(refs) {
-  return (refs && refs.length)
-    ? `<span class="refs">${refs.map((r) => `<span class="ref-chip">${esc(r)}</span>`).join('')}</span>`
-    : '';
+function chips(refs, rendues) {
+  /* Une puce [S1] est un accès à la preuve, pas un décor : c'est un bouton, tactile d'abord,
+     qui descend à la source correspondante. Jamais un lien href inventé vers un document. */
+  if (!refs || !refs.length) return '';
+  const dispo = [...new Set(refs.filter((r) => !rendues || rendues.has(r)))];
+  /* Une référence annoncée par le moteur mais absente des preuves réellement rendues n'est
+     pas un lien : elle devient un marqueur. Un bouton qui ne mène nulle part serait une
+     promesse de preuve que le système ne tient pas. */
+  const absentes = [...new Set(refs.filter((r) => rendues && !rendues.has(r)))];
+  return `<span class="refs">${dispo.map((r) => `<button type="button" class="ref-chip" data-ref="${esc(r)}"`
+      + ` aria-label="Afficher la source ${esc(r)} dans les preuves citées">${esc(r)}</button>`)
+      .join('')}${absentes.map((r) => `<span class="unresolved" title="référence annoncée par le `
+      + `moteur, absente des sources rendues">${esc(r)} : preuve non rendue</span>`).join('')}</span>`;
+}
+
+function liCitations() {
+  document.querySelectorAll('#answer [data-ref]').forEach((el) => {
+    el.onclick = () => versSource(el.dataset.ref);
+  });
+}
+
+/* « Voir la source » : ancre réelle dans la liste des preuves, extrait ouvert, cible
+   brièvement surlée. Si la citation n'a pas été résolue, la source n'est pas là : le dire
+   vaut mieux qu'un clic muet. */
+function versSource(ref) {
+  const cible = document.getElementById('src-' + ref);
+  if (!cible) {
+    notice(`La source ${ref} n’est pas dans la liste des preuves : sa citation n’a pas été résolue.`,
+      'citation non résolue');
+    return false;
+  }
+  const det = cible.querySelector('details');
+  if (det) det.open = true;
+  try { history.replaceState(null, '', '#src-' + ref); } catch { /* pas d'historique en file:// */ }
+  cible.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  cible.classList.add('is-jump');
+  setTimeout(() => cible.classList.remove('is-jump'), 1600);
+  say(`Source ${ref} affichée plus bas.`);
+  return true;
 }
 
 /* Autorités et statut de source : lus du registre (payload), jamais du modèle. Sans source_meta
@@ -204,6 +287,16 @@ function renderAnswer(data) {
   $('statusCode').textContent = label;
   $('statusMeaning').textContent = corpusLabel(data);
   $('answerTime').textContent = `Réponse${total}${sourceCount(data)}`;
+  /* Le modèle QUI A PARLÉ, lu dans la décharge du résultat (`technique.gen_model`), jamais
+     déduit du sélecteur : si ce nom ne correspond pas à la sélection, la divergence est
+     visible sans ouvrir les options avancées. */
+  const ligne = $('answerModel');
+  if (ligne) {
+    const servi = (data.technique || {}).gen_model;
+    ligne.hidden = !servi;
+    ligne.textContent = servi ? `modèle servi : ${servi}` : '';
+    ligne.title = 'Nom signalé par le moteur dans la décharge du résultat';
+  }
   renderProvisional(data);
 
   const claims = data.answer || [];
@@ -213,9 +306,11 @@ function renderAnswer(data) {
     $('answer').innerHTML = `<p class="abstain-reason">${esc(data.reason ||
       'Les passages récupérés ne permettent pas une réponse sûre avec le corpus local.')}</p>`;
   } else {
-    $('answer').innerHTML = `<ol class="claims">${claims.map((c) => `<li>${rich(c.text)}${chips(c.refs)}${
+    const rendues = new Set((data.sources || []).map((x) => x.ref));
+    $('answer').innerHTML = `<ol class="claims">${claims.map((c) => `<li>${rich(c.text)}${chips(c.refs, rendues)}${
       c.citation_valid === false ? '<span class="unresolved">citation non résolue</span>' : ''
     }</li>`).join('')}</ol>`;
+    liCitations();
   }
 
   const lim = data.limitations || [];
@@ -244,10 +339,119 @@ function sourceYear(name) {
   return m ? m[0] : '';
 }
 
+/* Étiquettes de preuve : uniquement des champs lus du registre, transmis par l'API
+   (`source_status`, `source_authority`, `societies`, `event`, `official_final_version`,
+   `registry_status`). Ni date devinée dans le nom de fichier, ni pourcentage de confiance.
+   Ce que l'API ne transmet pas (date de version, DOI, URL du document) n'est pas affiché —
+   voir HANDOFF : l'exposer demanderait d'élargir la payload, hors périmètre science figée. */
+function sourceBadges(s) {
+  const lu = (v) => (v === undefined || v === null || v === '' ? '' : String(v));
+  const etat = { published: 'document publié', withdrawn: 'RETIRÉ DU CORPUS' };
+  const statut = lu(s.source_status);
+  const puce = (cls, texte, titre) => `<span class="badge badge-${cls}"${titre
+    ? ` title="${esc(titre)}"` : ''}>${esc(texte)}</span>`;
+  const out = [];
+  if (statut === PROVISIONAL) {
+    out.push(puce('prov', `prépublication${s.event ? ` · ${s.event}` : ''}`,
+      'support présenté en congrès, pas encore la version finale officielle'));
+  } else {
+    out.push(puce('doc', etat[statut] || statut, 'statut lu du registre canonique'));
+  }
+  if (s.official_final_version === false) {
+    out.push(puce('warn', 'pas la version finale', 'official_final_version = false (registre)'));
+  }
+  const societes = (s.societies && s.societies.length ? s.societies : [s.source_authority])
+    .filter(Boolean);
+  if (societes.length) out.push(puce('auth', societes.join(' · '), 'autorité de la source'));
+  if (lu(s.registry_status)) out.push(puce('reg', `registre : ${s.registry_status}`,
+    'état de la transcription dans le registre'));
+  return out;
+}
+
 function sourceType(name) {
   const m = String(name || '').match(/\.(pptx|pdf|docx?|odp|key)$/i);
   return m ? m[1].toUpperCase().replace('PPTX', 'PPT') : 'Document';
 }
+
+/* Preuve à trois niveaux (§7-§10 de la mission).
+   1. PREUVE RETENUE = vue mise en page, produite par le formatter déterministe, jamais par un
+      LLM ; c'est la vue par défaut parce qu'elle se lit, mais ce n'est pas la vérité :
+   2. TEXTE BRUT = la chaîne exacte transmise par l'API, dans un <pre>, sans aucun traitement ;
+   3. CONTEXTE = les champs réellement transmis (document, page, fin de page, registre) et la
+      liste des autres passages du même document déjà présents dans la réponse.
+   Rien n'est complété : ce que l'API ne transmet pas est écrit « non transmis ». Notamment la
+   SECTION du document et l'URL canonique du fichier ne sont pas dans la payload — les inventer
+   serait une fabrication, et un lien construit depuis le nom de fichier mènerait ailleurs. */
+const LIM_VUE = 1200;                       // au-delà, la suite est dépliable, jamais cachée
+
+function preuveHtml(s, ex, src) {
+  const brut = String(s.text !== undefined && s.text !== null && s.text !== '' ? s.text : ex);
+  const vue = A2MEDEvidenceView.formater(brut, { page: s.page });
+  let html = A2MEDEvidenceView.vers_html(vue).replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  const tropLong = vue.net.length > LIM_VUE;
+  const ref = esc(s.ref);
+  const autres = (src || []).filter((o) => o !== s && o.document === s.document)
+    .map((o) => `${o.ref}${o.page !== undefined && o.page !== null ? ` p. ${esc(o.page)}` : ''}`);
+  const champs = [
+    ['Document', `${humanDoc(s.document)} · ${esc(s.document)}`],
+    ['Page/diapositive', s.page === undefined || s.page === null || s.page === ''
+      ? 'non transmise' : `page ${esc(s.page)}${s.page_end !== undefined && s.page_end !== null
+        && s.page_end !== s.page ? ` → ${esc(s.page_end)}` : ''} du fichier`],
+    ['Registre', s.source_id ? `${esc(s.source_id)}${s.registry_status ? ` · ${esc(s.registry_status)}` : ''}`
+      : 'non transmis'],
+    ['Section du document', 'non transmise par l’API'],
+    ['Autre passage de ce document dans la réponse', autres.length ? autres.join(' · ') : 'aucun'],
+  ];
+  return `<div class="src-preuve" data-preuve="${ref}">
+    <div class="preuve-vue${tropLong ? ' est-pliee' : ''}">${html}</div>
+    ${tropLong ? `<p class="preuve-plus"><button type="button" class="bouton-preuve"
+      data-action="derouler" data-src="${ref}" aria-expanded="false">Tout afficher
+      (${vue.net.length - LIM_VUE} caractères de plus)</button></p>` : ''}
+    <p class="preuve-actions">
+      <button type="button" class="bouton-preuve" data-action="brut" data-src="${ref}"
+        aria-expanded="false">Afficher le texte brut</button>
+      <button type="button" class="bouton-preuve" data-action="contexte" data-src="${ref}"
+        aria-expanded="false">Contexte de la source</button>
+    </p>
+    <div class="preuve-brut" hidden>${A2MEDEvidenceView.brut_html(brut)}
+      <p class="fine">Texte exact transmis par l’API, aucun traitement. La mise en page n’est
+        qu’une vue : c’est ici la vérité à comparer.</p></div>
+    <div class="preuve-contexte" hidden><dl class="contexte">
+      ${champs.map(([c, v]) => `<dt>${c}</dt><dd>${v}</dd>`).join('')}
+      </dl>
+      <p class="fine">La page indiquée est celle du fichier extrait ; la page imprimée du document
+        peut être décalée (couverture, sommaire). Aucun lien vers le document n’est affiché :
+        l’URL canonique n’est pas dans les données transmises.</p></div>
+  </div>`;
+}
+
+/* Bascules des trois niveaux. Un seul délégataire pour les deux modes : les cartes sont
+   recréées à chaque réponse, un handler par bouton serait perdu au re-rendu. */
+function installerBasculesPreuve(racine) {
+  racine.addEventListener('click', (ev) => {
+    const bouton = ev.target.closest('button[data-action]');
+    if (!bouton) return;
+    const carte = bouton.closest('[data-preuve]');
+    if (!carte) return;
+    const action = bouton.dataset.action;
+    if (action === 'derouler') {
+      const vue = carte.querySelector('.preuve-vue');
+      vue.classList.remove('est-pliee');
+      bouton.closest('.preuve-plus').hidden = true;
+      return;
+    }
+    const cible = carte.querySelector(action === 'brut' ? '.preuve-brut' : '.preuve-contexte');
+    const ouvre = cible.hidden;
+    cible.hidden = !ouvre;
+    bouton.setAttribute('aria-expanded', ouvre ? 'true' : 'false');
+    bouton.textContent = ouvre
+      ? (action === 'brut' ? 'Masquer le texte brut' : 'Masquer le contexte')
+      : (action === 'brut' ? 'Afficher le texte brut' : 'Contexte de la source');
+    if (ouvre) cible.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+}
+
+installerBasculesPreuve($('sources'));
 
 function renderSources(data) {
   const src = data.sources || [];
@@ -264,16 +468,17 @@ function renderSources(data) {
     : `Sources citées (${src.length})`;
   $('sources').innerHTML = src.map((s, index) => {
     const ex = String(s.excerpt ?? '');
-    const prov = s.source_status === 'prepublication_recommendation'
-      ? `<span class="badge-prov">Provisoire${s.event ? ` (${esc(s.event)})` : ''}</span>` : '';
-    const auth = (s.societies && s.societies.length ? s.societies : [s.source_authority || 'SPILF'])
-      .map((a) => `<span>${esc(a)}</span>`).join('');
-    return `<article class="source${prov ? ' is-provisional' : ''}">
+    const annee = sourceYear(s.document);
+    return `<article class="source" id="src-${esc(s.ref)}">
       <h3 class="src-title"><span class="ref">${esc(s.ref)}</span> ${esc(humanDoc(s.document))}</h3>
-      <p class="src-meta">${prov}${auth}<span>${esc(sourceYear(s.document))}</span>
-        <span>${esc(sourceType(s.document))}</span><span>Page/diapositive ${esc(s.page)}</span>
+      <p class="src-meta"><span>${esc(s.document)}</span>
+        <span>Page/diapositive ${esc(s.page === undefined || s.page === null || s.page === ''
+          ? 'non renseignée' : s.page)}</span>
+        ${annee ? `<span>année du fichier : ${esc(annee)}</span>` : ''}
+        <span>${esc(sourceType(s.document))}</span>
         ${data.source_only ? `<span>Rang ${index + 1}/${src.length}</span>` : ''}</p>
-      <p class="excerpt">${rich(ex)}</p>
+      <p class="src-meta src-meta-detail">${sourceBadges(s).join('')}</p>
+      ${preuveHtml(s, ex, src)}
       <details class="source-tech"><summary>Identifiant technique</summary>
         <p class="fine mono">${esc(s.passage_id)}${data.source_only && Number.isFinite(s.rerank_score)
           ? ` · score ${esc(s.rerank_score.toFixed(3))}` : ''}</p></details>
@@ -310,13 +515,23 @@ function renderTech(data) {
 }
 
 function render(data) {
+  const carte = $('answerCard');
+  const topAvant = carte.isConnected ? carte.getBoundingClientRect().top : null;
+  const suivait = lecteurEnBas;
   current = data;
   $('error').hidden = true;
   $('result').hidden = false;
   renderAnswer(data);
   renderSources(data);
   renderTech(data);
+  setView(data.source_only ? 'result' : (data.status === 'ABSTENTION' ? 'abstention' : 'result'));
   if (data.source_only && $('synthBtn')) $('synthBtn').onclick = synthesizeSources;
+  // Le lecteur ne doit pas voir sa ligne sauter quand le brouillon devient la réponse : on
+  // réajuste le défilement de la seule différence de hauteur, et seulement s'il ne suivait pas.
+  if (!suivait && topAvant !== null) {
+    const ecart = carte.getBoundingClientRect().top - topAvant;
+    if (Math.abs(ecart) > 8) window.scrollBy(0, ecart);
+  }
 }
 
 /* ------------------------------------------------------------ erreurs (français, sobre) */
@@ -396,27 +611,74 @@ function stopProgress() {
   $('progress').hidden = true;
 }
 
-/* ------------------------------------------------------------ brouillon (non vérifié) */
-function setDraftState(state) {
-  const d = $('draft');
-  d.dataset.state = state;
-  d.open = state === 'redaction';
-  $('draftLabel').textContent = DRAFT[state][0];
-  $('draftWarn').textContent = DRAFT[state][1];
-  if (state === 'ecarte') $('draftText').textContent = '';   // une abstention ne se lit pas
+/* ------------------------------------------------------------ états de la carte unique */
+function setPillAttente() {
+  setPill('attente', 'État non vérifié',
+    'Connectez-vous pour que la page puisse interroger le service de calcul.');
 }
 
-function draftDelta(text) {
-  if (!USE_STREAM) return;
-  if ($('draft').hidden) {                       // un brouillon ne doit pas voisiner une réponse
-    resultWas = $('result').hidden;              // valide : on la remmettra telle quelle
-    $('result').hidden = true;
-    setDraftState('redaction');
+function setView(vue) {
+  const carte = $('answerCard');
+  carte.dataset.view = VUES.includes(vue) ? vue : 'idle';
+  const enCours = vue === 'search' || vue === 'drafting' || vue === 'checking';
+  $('drafting').hidden = !enCours;
+  if (enCours) $('draftFlag').textContent = ETATS[vue];
+  if (!enCours) videApercu();
+  // Une réponse provisoire ne se copie pas : le bouton n'est pas grisé, il n'est pas là.
+  const copie = $('copyAllBtn');
+  if (copie) copie.hidden = vue !== 'result' || !current || !!current.source_only
+    || current.status === 'ABSTENTION';
+}
+
+function videApercu() {
+  if ($('draftList')) $('draftList').innerHTML = '';
+  if ($('draftMore')) $('draftMore').hidden = true;
+}
+
+function effaceCarte() {
+  $('answer').innerHTML = '';
+  $('limits').innerHTML = '';
+  $('limits').hidden = true;
+  $('provisionalBanner').hidden = true;
+  $('sourcesPanel').hidden = true;                 // des sources de la question d'avant
+}                                                    // laisseraient croire à une preuve en cours
+
+function rendApercu() {
+  trameEnAttente = null;
+  const liste = $('draftList');
+  if (!liste) return;
+  liste.innerHTML = apercuTextes.map((t) => `<li>${rich(t)}</li>`).join('');
+  if (lecteurEnBas) {                              // suivre en bas, jamais tirer le lecteur
+    const y = Math.max(window.scrollY + (document.body.scrollHeight - window.innerHeight), 0);
+    window.scrollTo(0, y);
   }
-  $('draft').hidden = false;
-  const pre = $('draftText');
-  pre.textContent += text;                                   // textContent : rien d’injectable
-  pre.scrollTop = pre.scrollHeight;
+}
+
+function programmeRendu() {
+  if (trameEnAttente !== null) return;             // regroupé : une passe par image
+  trameEnAttente = requestAnimationFrame(rendApercu);
+}
+
+let apercuTextes = [];
+
+function debutApercu() {
+  if (window.A2MEDStreamView) apercu = window.A2MEDStreamView.creer();
+  apercuTextes = [];
+  suitLeBas();                                            // position RÉELLE : on ne part pas du haut
+  videApercu();
+}
+
+function apercuDelta(texte) {
+  if (!apercu) return;                             // pas de décodeur : rien de brut n'est montré
+  const r = apercu.delta(texte);
+  if (r.debordement && $('draftMore')) {
+    $('draftMore').textContent = 'Affichage limité pendant la rédaction — le texte complet '
+      + 'complet n’est pas montré ; la réponse finale s’affiche après vérification.';
+    $('draftMore').hidden = false;
+  }
+  if (r.en_attente) return;                        // fragment non interprétable : on attend
+  apercuTextes = apercuTextes.concat(r.textes);
+  programmeRendu();
 }
 
 /* ------------------------------------------------------------ flux SSE /api/ask/stream */
@@ -461,9 +723,10 @@ async function askStream(q, mode = selectedMode(), sourceToken = null) {
       if (Object.hasOwn(stages, data.name)) setStep(stages[data.name]);
     } else if (ev === 'text_delta') {
       setStep(2);
-      draftDelta(data.text);
+      if ($('answerCard').dataset.view !== 'drafting') { setView('drafting'); }
+      apercuDelta(data.text);                          // texte reconnu seulement, jamais le JSON brut
     } else if (ev === 'validation') {
-      if (data.stage === 'generation_terminee') setStep(3);  // le contrôle, pour de vrai
+      if (data.stage === 'generation_terminee') { setStep(3); setView('checking'); }
       else streamStats = data.stream_stats || null;          // TTFT mesuré côté moteur
     } else if (ev === 'done') {
       out = data;
@@ -500,19 +763,22 @@ async function askClassic(q, mode = selectedMode(), sourceToken = null) {
 }
 
 /* Une panne = un seul chemin d'affichage, le même quel que soit l'envoyeur (flux, route
-   JSON, réseau coupé) : message français, brouillon écarté, réponse précédente rendue. */
+   JSON, réseau coupé) : message français en clair, code technique conservé, texte provisoire
+   retiré de la carte. La réponse d'une AUTRE question n'est jamais ressuscitée : une carte
+   vide sous une question récente serait une confusion médicale. */
 function showFailure(message, detail) {
   notice(message, detail || '');
-  setDraftState('ecarte');                                 // rien de brut ne reste visible
-  $('draft').hidden = true;
-  if (resultWas !== null) $('result').hidden = resultWas;   // la réponse d'avant revient
+  setView('error');                                        // rien de brut ne reste dans la carte
+  $('answer').innerHTML = '<p class="abstain-reason">Aucune réponse : la question n’a pas abouti.</p>';
+  $('sourcesPanel').hidden = true;
   checkHealth();
 }
 
 /* ------------------------------------------------------------ question */
-function finishDraft() {
-  $('draftText').textContent = '';
-  $('draft').hidden = true;
+function memoriseReglages() {
+  SEC.set('local', PREFS, { mode: selectedMode(), model: (document.querySelector(
+    'input[name="model"]:checked') || {}).value || null,
+    options: $('optionsBox') ? $('optionsBox').open : false });
 }
 
 async function synthesizeSources() {
@@ -521,11 +787,9 @@ async function synthesizeSources() {
   busy = true;
   lockModes(true);
   $('askBtn').disabled = true;
-  lockModes(true);
   $('error').hidden = true;
-  finishDraft();
   streamStats = null;
-  resultWas = null;
+  effaceCarte(); debutApercu(); setView('search');
   startProgress('standard', true);
   say('Synthèse des passages conservés en cours.');
   try {
@@ -533,7 +797,6 @@ async function synthesizeSources() {
     if (res.routeAbsente) res = await askClassic(question, 'standard', token);
     if (res.erreur) showFailure(res.erreur, res.detail);
     else {
-      finishDraft();
       render(res.data);
       say('Réponse prête. ' + (STATUS[res.data.status] || STATUS.INCONNU)[1]);
     }
@@ -560,10 +823,11 @@ async function ask() {
   $('askBtn').disabled = true;
   lockModes(true);
   $('error').hidden = true;                                  // un échec ne doit pas effacer
-  $('draft').hidden = true;                                  // la réponse déjà affichée
-  $('draftText').textContent = '';
+  SEC.set('session', QUESTION_EN_ATTENTE, q);                 // survit à un rechargement (session expirée)
+  memoriseReglages();
   streamStats = null;
-  resultWas = null;
+  effaceCarte(); debutApercu();
+  $('result').hidden = false; setView('search');              // la carte ne disparaît plus
   startProgress();
   say('Question envoyée. Recherche dans les recommandations, puis sélection des sources, '
     + 'puis rédaction.');
@@ -573,8 +837,8 @@ async function ask() {
     if (res.erreur) showFailure(res.erreur, res.detail);
     else {
       const code = STATUS[res.data.status] ? res.data.status : 'INCONNU';
-      finishDraft();
       render(res.data);
+      SEC.del('session', QUESTION_EN_ATTENTE);
       say(`Résultat prêt. ${res.data.source_only ? 'Passages retrouvés sans synthèse.' :
         STATUS[code][1]} ` +
         `${(res.data.sources || []).length} source(s) citée(s).`);
@@ -656,15 +920,24 @@ function countChars() {
   $('qCount').classList.toggle('near', n > maxQ - 60);
 }
 
-document.querySelectorAll('input[name="mode"]').forEach(el => el.addEventListener('change', updateMode));
+document.querySelectorAll('input[name="mode"]').forEach(el => el.addEventListener('change', () => { updateMode(); memoriseReglages(); }));
 updateMode();
 
 $('askForm').addEventListener('submit', (e) => { e.preventDefault(); ask(); });
 $('q').addEventListener('input', countChars);
+
+/* Téléphone : Entrée doit faire un saut de ligne, l'envoi est le bouton. Et pendant une
+   composition clavier (accents, clavier predictif), AUCUNE touche n'envoie la question. */
+const TACTILE = ((navigator.maxTouchPoints || 0) > 0) && !window.matchMedia('(pointer:fine)').matches;
+let enComposition = false;
+$('q').addEventListener('compositionstart', () => { enComposition = true; });
+$('q').addEventListener('compositionend', () => { enComposition = false; });
+$('q').setAttribute('enterkeyhint', TACTILE ? 'enter' : 'send');
 $('q').addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter') return;
+  if (e.key !== 'Enter' || enComposition || e.isComposing) return;
   if (e.metaKey || e.ctrlKey || e.altKey) { e.preventDefault(); ask(); return; }
   if (e.shiftKey) return;                                 // saut de ligne voulu
+  if (TACTILE) return;                                    // envoi par le bouton, pas par Entrée
   const v = e.target.value;
   if (!v.includes('\n') && v.trim()) { e.preventDefault(); ask(); }
 });
@@ -674,11 +947,70 @@ document.querySelectorAll('.chip').forEach((c) => {
 $('copyAllBtn').onclick = (e) => copy(answerText(true), e.currentTarget);
 $('clearHistory').onclick = () => { try { localStorage.removeItem(HIST); } catch { /* ignore */ }
   renderHist(); };
-$('healthRefresh').onclick = () => { healthTries = 0; checkHealth(); };
+$('healthRefresh').onclick = () => { healthTries = 0; setPill('demarrage', 'vérification du service…'); checkHealth(); loadContract(); };
 
-renderHist();
-countChars();
-checkHealth();
+window.addEventListener('scroll', () => {
+  if ($('answerCard').dataset.view === 'drafting') suitLeBas();
+}, { passive: true });
+
+function suitLeBas() {
+  lecteurEnBas = (window.innerHeight + window.scrollY)
+    >= (document.documentElement.scrollHeight - 80);
+}
+
+function appliqueReglages() {
+  const p = SEC.get('local', PREFS, null);
+  if (!p) return;
+  const mode = p.mode && document.querySelector(`input[name="mode"][value="${CSS.escape(p.mode)}"]`);
+  if (mode) mode.checked = true;
+  if (p.options && $('optionsBox')) $('optionsBox').open = true;
+  prefsMode = p.model || null;                            // appliqué à l'arrivée de /api/capabilities
+  updateMode();
+}
+
+/* Les clés de session sont écrites en brut par le gate (proxy) : on les relit en brut. */
+function cleSession(nom) {
+  try { return sessionStorage.getItem(nom); } catch { return null; }
+}
+
+function resteSurVeille() {                 // la page est ouverte, mais pas encore authentifiée
+  setPillAttente();
+  renderHist();
+  countChars();
+  restaureQuestionEnAttente();                      // question d'avant la reconnexion, dès le gate
+}
+
+function restaureQuestionEnAttente() {
+  const q = SEC.get('session', QUESTION_EN_ATTENTE, null);
+  if (!q) return;
+  $('q').value = q;
+  countChars();
+  notice('Votre question a été conservée après la reconnexion : rien n’a été envoyé sans vous.',
+    'reconnexion');
+}
+
+function demarrerApresAuthentification() {
+  $('error').hidden = true;                                // les erreurs d'avant-auth ne sont plus vraies
+  setPill('demarrage', 'vérification du service…', '');
+  restaureQuestionEnAttente();
+  loadContract();
+  checkHealth();
+  if ($('q')) $('q').focus();
+}
+
+function initAppli() {
+  appliqueReglages();
+  renderHist();
+  countChars();
+  if (cleSession('a2med_test_unlocked') === '1' || !gate.isConnected) {
+    loadContract();
+    checkHealth();
+  } else {
+    resteSurVeille();
+  }
+  if (gate.isConnected) passwordInput.focus();
+}
+initAppli();
 
 /* Contrat du service : modes, verdicts, et surtout la liste des génératrices QUI RÉPONDENT.
    Le sélecteur de modèle n'est plus écrit dans le HTML : un modèle qui ne répond pas ne peut
@@ -688,10 +1020,12 @@ function renderModelOptions(gens) {
   if (!box || !gens.length) return;
   modelLabels = {};
   gens.forEach((g) => { modelLabels[g.key] = g.label; });
-  // Modèle par défaut annoncé au clinicien : le 9B (même règle que /eval), sinon la première
-  // génératrice qui répond — et ce repli est écrit sous le sélecteur, jamais laissé silencieux.
+  // Modèle par défaut annoncé au clinicien : le choix enregistré s'il répond, sinon le 9B
+  // (même règle que /eval), sinon la première génératrice qui répond — et ce repli est écrit
+  // sous le sélecteur, jamais laissé silencieux.
   const live = gens.filter((g) => g.available);
-  const pref = ((live.find((g) => g.key === 'qwen9b' && g.model_served !== false)
+  const pref = ((live.find((g) => g.key === prefsMode)
+    || live.find((g) => g.key === 'qwen9b' && g.model_served !== false)
     || live.find((g) => g.key === 'flash') || live[0] || {}).key) || '';
   box.innerHTML = gens.map((g) => `<label class="model-opt${g.available ? '' : ' off'}">
       <input type="radio" name="model" value="${g.key}" ${g.key === pref ? 'checked' : ''}
@@ -723,7 +1057,6 @@ function renderModelOptions(gens) {
   }
   updatePresetLine();
 }
-
 // Ce que l'option repliee est en train de choisir, en clair.
 function updatePresetLine() {
   const mode = selectedMode();
@@ -745,8 +1078,12 @@ async function loadContract() {
     const r = await apiFetch('/api/capabilities');
     const text = await r.text();
     if (!r.ok) throw C.httpError(r, text);
+    contratCharge = true;
     renderModelOptions(C.apply(JSON.parse(text)).generators || []);
   } catch (e) {
+    // avant authentification, ce n'est pas une panne : la page n'a simplement pas le droit
+    // d'interroger le service. Le dire évite la notice rouge mensongère sous le gate.
+    if (gate.isConnected) return;
     notice('Contrat du service illisible : ' + e.message);
   }
 }

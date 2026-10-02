@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Retour expert — A²-Med</title>
 <meta name="description" content="Donner un avis médical sur une affirmation et les passages cités. Une page, une décision.">
-<link rel="stylesheet" href="./expert.css?v=710d1187">
+<link rel="stylesheet" href="./expert.css?v=4e2bf809">
 </head>
 <body data-api="https://panels-hearing-cbs-even.trycloudflare.com">
 
@@ -78,6 +78,16 @@
     <button class="btn verdict v-ambigue"    data-verdict="AMBIGUOUS">? Ambiguë / impossible à trancher</button>
   </div>
 
+  <!-- État de sauvegarde persistant (mission web-clinician-v3-002, lot D). Une confirmation qui
+       disparaît n'est pas une preuve d'enregistrement : cette ligne reste, et dit quand rien
+       n'est parti. L'annonce au lecteur d'écran passe par #confirmation, la seule région
+       vivante de la page — deux régions qui parlent se coupent l'une l'autre. -->
+  <p class="etat-save" id="etat-save" hidden></p>
+  <p class="renvoi" id="renvoi" hidden>
+    <button class="btn lien" id="btn-reessayer" type="button">Renvoyer ce verdict</button>
+  </p>
+  <p class="rappel" id="item-attente" hidden></p>
+
   <details class="pliable" id="plieuse-note">
     <summary>Note facultative</summary>
     <textarea id="item-note" maxlength="2000" rows="3"
@@ -109,6 +119,6 @@
   système, ils sont collectés pour être relus.</p>
 
 <script src="./a2med_contract.js?v=a77957cf"></script>
-<script src="./expert.js?v=210e2a62"></script>
+<script src="./expert.js?v=4671eba1"></script>
 </body>
 </html>

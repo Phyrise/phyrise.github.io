@@ -17,8 +17,53 @@
     expert: localStorage.getItem("a2med_expert_id") || "",
     campagne: null, session: null, item: null, index: 0,
     minute: 0, ouverteAvantVerdict: false, reponseOuverte: false,
-    enCours: false,
+    enCours: false, dernierVerdict: null,
+    positions: {}, plies: {},
   };
+
+  /* ------------------------------------------------------------------ reprise et file locale
+     Un avis rendu sur un téléphone dans un couloir peut être coupé par un réseau qui lâche,
+     par un verrouillage d'écran, par un rappel téléphonique. Rien ici ne doit dépendre de la
+     chance : le choix non parti est gardé localement, la position de lecture est rendue à son
+     retour, et aucun envoi n'est déclenché sans une action explicite. */
+  const CLE_ATTENTE = "a2med_expert_en_attente";
+  const CLE_POSITIONS = "a2med_expert_positions";
+  const jsonLu = (cle) => { try { return JSON.parse(sessionStorage.getItem(cle) || "null"); } catch (e) { return null; } };
+  const jsonEcrit = (cle, valeur) => {
+    try { sessionStorage.setItem(cle, JSON.stringify(valeur)); } catch (e) { /* quota: on continue */ }
+  };
+  const LIBELLES = { SUPPORTED: "Supportée", UNSUPPORTED: "Non supportée",
+                     AMBIGUOUS: "Ambiguë", SKIPPED: "Passée" };
+  const heure = () => new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+  /* Les trois états demandés, et seulement eux : Envoi… / Enregistré ✓ / Non enregistré —
+     Réessayer. « Enregistré » n'est jamais affirmé avant la réponse du serveur. */
+  function etatSave(mode, detail) {
+    const zone = $("etat-save"), renvoi = $("renvoi");
+    if (!zone) return;
+    const textes = { vide: "", attente: "Envoi en cours…", garde: "Enregistré ✓",
+                     perdu: "Non enregistré — Réessayer" };
+    zone.className = "etat-save " + mode;
+    zone.hidden = mode === "vide";
+    zone.textContent = textes[mode] + (detail ? " · " + detail : "");
+    if (renvoi) renvoi.hidden = mode !== "perdu";
+  }
+
+  function gardeAttente(valeur) {
+    jsonEcrit(CLE_ATTENTE, valeur);
+    E.enAttente = valeur;
+  }
+
+  function positionActuelle() {
+    const it = E.item;
+    if (!it || !E.session) return;
+    E.positions[it.item_id] = Math.round(window.scrollY || window.pageYOffset || 0);
+    E.plies[it.item_id] = [...document.querySelectorAll("#item-evidence details")]
+      .map((d, i) => (d.open ? "o" : "f")) .join("");
+    jsonEcrit(CLE_POSITIONS, { session_id: E.session.session_id, positions: E.positions,
+                               plies: E.plies });
+  }
+
 
   // ------------------------------------------------------------------ appels
   async function api(path, options = {}) {
@@ -120,6 +165,7 @@
 
   // ------------------------------------------------------------------ liste des campagnes
   async function lister() {
+    positionActuelle();
     direErreur("liste-erreur", problem);
     let data;
     try {
@@ -170,6 +216,13 @@
         body: { campaign_id: c.campaign_id, expert_id: E.expert, campaign_sha: c.campaign_sha },
       });
       E.campagne = c; E.session = s; E.index = s.current_index || 0;
+      const mem = jsonLu(CLE_POSITIONS);
+      if (mem && mem.session_id === s.session_id) {   // reprise du même trajet, pas d'un ancien
+        E.positions = mem.positions || {};
+        E.plies = mem.plies || {};
+      } else {
+        E.positions = {}; E.plies = {};
+      }
       await montrerItem(E.index);
     } catch (e) {
       if (e.code === "auth") { montrer("auth"); return; }
@@ -183,13 +236,14 @@
   }
 
   async function montrerItem(index) {
+    positionActuelle();                       // on part d'ici : la position en cours est gardée
     try {
       const s = await api(`/api/expert/session/${E.session.session_id}?index=${index}`);
       E.session = s; E.index = index; E.item = s.item;
       if (!s.item) { montrer("fin"); finir(); return; }
       dessiner(s);
       montrer("item");
-      window.scrollTo(0, 0);
+      // pas de scrollTo(0,0) ici : `dessiner` rend la position de lecture de cet item
     } catch (e) {
       if (e.code === "auth") { montrer("auth"); return; }
       if (e.code === "session_introuvable") { await lister(); return; }
@@ -208,17 +262,8 @@
     $("item-consigne").textContent = s.consigne || "";
     const ev = $("item-evidence");
     ev.textContent = "";
-    (it.evidence || []).forEach((e) => {
-      const c = document.createElement("div"); c.className = "evidence";
-      const ssource = document.createElement("p"); ssource.className = "source";
-      const a = document.createElement("span"); a.className = "alias"; a.textContent = e.alias;
-      const d = document.createElement("span"); d.className = "doc";
-      d.textContent = [e.doc, e.page ? "p. " + e.page : ""].filter(Boolean).join(" · ");
-      ssource.append(a, d);
-      const t = document.createElement("p"); t.textContent = e.text;
-      c.append(ssource, t);
-      ev.appendChild(c);
-    });
+    dessinePreuves(it);
+
     const plieuse = $("plieuse-reponse");
     plieuse.open = false;
     $("item-reponse").textContent = it.answer || "(réponse non disponible)";
@@ -233,7 +278,125 @@
     });
     direErreur("item-erreur", "");
     E.minute = Date.now();
+
+    /* état de sauvegarde à l'ouverture : ce que le serveur a, pas ce qu'on voudrait avoir */
+    if (deja && deja.verdict) {
+      etatSave("garde", LIBELLES[deja.verdict] || deja.verdict);
+    } else {
+      etatSave("vide");
+    }
+    E.dernierVerdict = deja ? deja.verdict : null;
+
+    // un choix resté en local (réseau coupé, écran verrouillé) est signalé, jamais renvoyé seul
+    const attente = jsonLu(CLE_ATTENTE);
+    const rappel = $("item-attente");
+    if (attente && attente.item_id === it.item_id
+        && (attente.verdict || "") !== ((deja || {}).verdict || "")) {
+      rappel.hidden = false;
+      rappel.textContent = "Votre choix « " + (LIBELLES[attente.verdict] || attente.verdict)
+        + " » n'avait pas été enregistré sur ce téléphone.";
+      $("btn-reessayer").textContent = "Renvoyer « "
+        + (LIBELLES[attente.verdict] || attente.verdict) + " »";
+      E.dernierVerdict = attente.verdict;
+    } else if (attente && attente.item_id !== it.item_id) {
+      gardeAttente(null);                       // l'item concerné n'est plus celui-ci
+      rappel.hidden = true;
+    } else {
+      rappel.hidden = true;
+    }
+
+    // position de lecture et preuves ouvertes ou fermées : rendues à qui revient
+    const code = (E.plies || {})[it.item_id];
+    if (code) {
+      [...document.querySelectorAll("#item-evidence details")].forEach((d, i) => {
+        d.open = code[i] === "o";
+      });
+    }
+    const y = (E.positions || {})[it.item_id];
+    window.scrollTo(0, Number.isFinite(y) ? y : 0);
   }
+
+  /* Les preuves d'un item, servies comme partout ailleurs : vue mise en page par le formatter
+     déterministe (aucun LLM, aucune réécriture), texte brut exact de la campagne sous un
+     repli, contexte limité à ce que la campagne a enregistré. Le texte de la campagne reste
+     la seule vérité : ici, la vue est seulement lue, jamais stockée. */
+  function dessinePreuves(it) {
+    const ev = $("item-evidence");
+    const V = window.A2MEDEvidenceView;
+    const toutes = it.evidence || [];
+    toutes.forEach((e, n) => {
+      const c = document.createElement("div"); c.className = "evidence";
+      const ssource = document.createElement("p"); ssource.className = "source";
+      const a = document.createElement("span"); a.className = "alias"; a.textContent = e.alias;
+      const d = document.createElement("span"); d.className = "doc";
+      d.textContent = [e.doc, e.page ? "p. " + e.page : ""].filter(Boolean).join(" · ");
+      ssource.append(a, d);
+      c.append(ssource);
+      const brut = String(e.text == null ? "" : e.text);
+      const corps = document.createElement("div"); corps.className = "preuve-corps";
+      if (V) {
+        const vue = V.formater(brut, { page: e.page });
+        const h = document.createElement("div"); h.className = "preuve-vue";
+        vue.blocs.forEach((b) => {
+          if (b.type === "liste") {
+            if (!b.puces) {                       // numérotée : le numéro reste dans le texte
+              b.items.forEach((x) => {
+                const item = document.createElement("p");
+                item.className = "ev-item-numerote"; item.textContent = x;
+                h.append(item);
+              });
+            } else {
+              const ul = document.createElement("ul"); ul.className = "ev-liste";
+              b.items.forEach((x) => {
+                const li = document.createElement("li"); li.textContent = x; ul.append(li);
+              });
+              h.append(ul);
+            }
+            return;
+          }
+          const para = document.createElement("p");
+          para.className = b.type === "titre" ? "ev-titre" : "ev-paragraphe";
+          para.textContent = b.texte;
+          h.append(para);
+        });
+        corps.append(h);
+        // le texte brut reste LE texte de la campagne, dans un <pre>, sans aucun traitement
+        const plie = document.createElement("details"); plie.className = "preuve-brut";
+        const somme = document.createElement("summary");
+        somme.textContent = "Voir le texte brut enregistré par la campagne";
+        const pre = document.createElement("pre"); pre.textContent = brut;
+        plie.append(somme, pre);
+        corps.append(plie);
+        const autres = toutes.filter((o, i) => i !== n && o.doc === e.doc)
+          .map((o) => `${o.alias}${o.page ? " p. " + o.page : ""}`);
+        const dl = document.createElement("dl"); dl.className = "contexte";
+        const champs = [
+          ["Document", e.doc || "non enregistré"],
+          ["Page/diapositive", (e.page === undefined || e.page === null || e.page === "")
+            ? "non enregistrée" : String(e.page)],
+          ["Section du document", "non enregistrée dans la campagne"],
+          ["Autre passage de ce document", autres.length ? autres.join(" · ") : "aucun dans cet item"],
+        ];
+        champs.forEach(([c1, v]) => {
+          const dt = document.createElement("dt"); dt.textContent = c1;
+          const dd = document.createElement("dd"); dd.textContent = v;
+          dl.append(dt, dd);
+        });
+        corps.append(dl);
+      } else {
+        // pas de module chargé : on affiche le brut, jamais une vue improvisée
+        const t2 = document.createElement("p"); t2.textContent = brut;
+        corps.append(t2);
+      }
+      c.append(corps);
+      ev.appendChild(c);
+    });
+  }
+
+  // bascules des preuves : un seul delégataire, les cartes sont recréées à chaque item
+  $("item-evidence").addEventListener("click", (ev) => {
+    if (ev.target.closest("details, summary")) positionActuelle();
+  });
 
   // ouverture de la réponse complète : mesurée, car elle peut avoir influencé le jugement
   $("plieuse-reponse").addEventListener("toggle", async () => {
@@ -252,55 +415,88 @@
   async function trancher(verdict, silencieux) {
     if (E.enCours || !E.session || !E.item) return;
     E.enCours = true;
+    E.dernierVerdict = verdict;
     document.querySelectorAll(".verdict").forEach((b) => { b.disabled = true; });
     const item = E.item;
     const deja = (E.session.reponses || {})[item.item_id];      // ce que CET écran croit déjà enregistré
+    // le choix visuel est pris immédiatement : un doigt qui a appuyé doit voir ce qu'il a choisi,
+    // même si le réseau ne répond jamais. L'enregistrement, lui, n'est affirmé qu'après réponse.
+    document.querySelectorAll(".verdict").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.verdict === verdict));
+    });
+    if (!silencieux) etatSave("attente");
     const corps = {
       session_id: E.session.session_id, campaign_sha: E.session.campaign_sha,
       item_id: item.item_id, verdict, note: $("item-note").value.trim(),   // "" = note effacée
       verdict_attendu: deja ? deja.verdict : null,                          // verrou optimiste
       response_time_s: Math.max(0, Math.round((Date.now() - E.minute) / 100) / 10),
       reponse_complete_ouverte: E.reponseOuverte, ouverte_avant_verdict: E.ouverteAvantVerdict,
+      // le serveur sait avancer tout seul ; on lui demande explicitement de ne pas le faire.
+      // Enregistrer n'est pas tourner la page : la position de lecture est une décision du
+      // praticien, et c'est aussi ce qui fait qu'une reprise ramène à l'item qu'on lisait.
+      current_index: E.index,
     };
+    // écrit AVANT l'envoi : c'est ce qui survit à un écran qui s'éteint en plein vol
+    gardeAttente({ session_id: E.session.session_id, item_id: item.item_id, verdict,
+                   note: corps.note, envoye_a: new Date().toISOString() });
     try {
       const r = await api("/api/expert/answer", { body: corps });
       E.session.reponses = E.session.reponses || {};
       E.session.reponses[item.item_id] = { verdict, note: corps.note, revision_count: r.revision_count,
                                            answered_at: r.saved_at };
-      document.querySelectorAll(".verdict").forEach((b) => {
-        b.setAttribute("aria-pressed", String(b.dataset.verdict === verdict));
-      });
+      gardeAttente(null);
+      $("item-attente").hidden = true;
       const total = E.session.n_items;
       const modif = r.revision_count > 0;
-      if (verdict === "SKIPPED") confirmer("Passé");
-      else confirmer(modif ? "Modifié et enregistré" : "Enregistré");
+      // « ce qu'on nous demande de corriger » : l'état reste à l'écran, on ne se contente pas
+      // d'un merci qui disparaît
+      etatSave("garde", (LIBELLES[verdict] || verdict) + " · " + heure()
+        + (modif ? " · révision " + r.revision_count : ""));
+      confirmer(verdict === "SKIPPED" ? "Passé" : modif ? "Modifié et enregistré" : "Enregistré");
       progresser(Math.min((E.session.n_annotes || 0) + (modif ? 0 : 1), total), total);
-      // enchaînement automatique : on ne demande jamais « enregistrer » deux fois
-      if (!silencieux && E.index < E.session.n_items - 1) {
-        await montrerItem(E.index + 1);
-      } else if (!silencieux) {
-        montrer("fin"); finir();
-      }
+      document.querySelectorAll(".verdict").forEach((b) => { b.disabled = false; });
       E.enCours = false;
+      // PAS d'enchaînement automatique (demande expresse de la mission v3-002) : le praticien
+      // garde la main, et garde la page où il est. On ne déplace la vue que sur son geste.
+      if (!silencieux) {
+        const suivant = $("btn-suivant");
+        if (suivant && E.index < total - 1) suivant.focus();
+        else montrer("fin");
+        if (E.index >= total - 1) finir();
+      }
     } catch (e) {
       E.enCours = false;
       document.querySelectorAll(".verdict").forEach((b) => { b.disabled = false; });
       if (e.code === "campagne_version_differente") {
+        etatSave("perdu");
         direErreur("item-erreur", e.message);
       } else if (e.code === "verdict_a_change") {
         // quelqu'un d'autre (un autre écran du même expert) a tranché : on relit, on n'écrase pas
+        gardeAttente(null);
+        etatSave("vide");
         direErreur("item-erreur", "cet item a été modifié depuis un autre écran — "
                                   + "la version enregistrée est affichée, rien n'a été écrasé.");
         await montrerItem(E.index);
-      } else if (e.code === "auth") { montrer("auth"); }
-      else { direErreur("item-erreur", (e.message || "Enregistrement impossible.")
-                            + " — votre réponse n'a pas été gardée, réessayez."); }
+      } else if (e.code === "auth") {
+        etatSave("perdu");
+        montrer("auth");
+      } else {
+        // le choix reste à l'écran et reste renvoyable tel quel : pas de saisie à refaire
+        etatSave("perdu");
+        direErreur("item-erreur", (e.message || "Enregistrement impossible.")
+                              + " — votre choix reste affiché, rien n'a été envoyé.");
+      }
     }
   }
 
   document.querySelectorAll(".verdict").forEach((b) =>
     b.addEventListener("click", () => trancher(b.dataset.verdict)));
   $("btn-passer").addEventListener("click", () => trancher("SKIPPED"));
+  // renvoi explicite du même verdict : jamais d'envoi automatique d'un choix non confirmé
+  $("btn-reessayer").addEventListener("click", () => {
+    if (!E.dernierVerdict) return;
+    trancher(E.dernierVerdict);
+  });
 
   // une note tapée APRÈS le verdict est enregistrée avec lui (sinon elle serait perdue)
   $("item-note").addEventListener("blur", () => {

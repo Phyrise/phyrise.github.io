@@ -169,3 +169,44 @@ a:focus-visible { outline: 3px solid #7fb6ab; outline-offset: 2px; }
 @media (prefers-contrast: more) {
   :root { --ence-douce: #333b44; --filet: #9aa5b1; }
 }
+
+/* ── lot D (web-clinician-v3-002) : état de sauvegarde et preuve à trois niveaux ─────────
+   Règle unique de cette section : ce que l'œil peut lire, le pouce peut l'atteindre, et
+   rien n'est jamais annoncé comme enregistré avant la réponse du serveur. */
+.etat-save {
+  margin: 10px 0 0; font-size: 15px; min-height: 22px; color: var(--ence-douce);
+  overflow-wrap: anywhere;
+}
+.etat-save.attente { color: var(--ence-douce); }
+.etat-save.attente::before { content: "◌ "; }
+.etat-save.garde { color: var(--supportee); font-weight: 600; }
+.etat-save.perdu { color: var(--non); font-weight: 600; }
+.renvoi, .rappel { margin: 6px 0 0; }
+.rappel { font-size: 15px; color: var(--ambigue); overflow-wrap: anywhere; }
+#btn-reessayer { min-height: 44px; color: var(--non); border-color: var(--non); }
+
+.preuve-corps { margin-top: 6px; }
+.preuve-vue p, .preuve-vue li { font-size: 15px; line-height: 1.55; margin: 0 0 8px;
+  overflow-wrap: anywhere; }
+.preuve-vue .ev-titre { font-weight: 650; }
+.preuve-vue ul.ev-liste { margin: 0 0 8px; padding-left: 22px; }
+.preuve-vue .ev-item-numerote { padding-left: 22px; text-indent: -1.4em; margin: 0 0 6px; }
+.preuve-brut { margin: 4px 0 8px; }
+.preuve-brut summary { min-height: 44px; display: flex; align-items: center;
+  font-size: 15px; color: var(--accent); cursor: pointer; }
+.preuve-brut pre {
+  margin: 6px 0 0; padding: 10px; background: var(--fond); border: 1px solid var(--filet);
+  border-radius: 8px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 340px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.contexte { margin: 4px 0 0; display: grid; grid-template-columns: minmax(96px, 38%) 1fr;
+  gap: 2px 10px; }
+.contexte dt { font-size: 13px; color: var(--ence-douce); }
+.contexte dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+@media (max-width: 430px) {
+  .contexte { grid-template-columns: 1fr; gap: 0; }
+  .contexte dd { margin-bottom: 6px; }
+  .preuve-brut pre { max-height: 260px; }
+}

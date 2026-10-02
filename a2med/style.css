@@ -115,22 +115,22 @@ summary:focus-visible, .state-retry:focus-visible, .hist:focus-visible {
 #elapsed { font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .spinner, .state-dot { animation: none; } }
 
-/* ------------------------------------------------- brouillon du générateur (non vérifié) */
-/* Le brouillon est le seul texte brut du modèle à l’écran : cadreillé, jamais coloré
-   comme un statut, placé AU-DESSOUS de la carte validée dans le DOM. */
-.draft { border-style: dashed; border-color: var(--cond-line); background: #fffdf7; }
-.draft[data-state="remplace"] { border-color: var(--line-2); background: var(--bg); }
-.draft[data-state="ecarte"] { border-color: var(--stop-line); background: var(--stop-bg); }
-.draft-label { font-size: 14px; font-weight: 700; color: var(--cond); cursor: pointer;
-  padding: 3px 0; min-height: 44px; }
-.draft[data-state="remplace"] .draft-label { color: var(--ink-2); font-weight: 600; }
-.draft[data-state="ecarte"] .draft-label { color: var(--stop); }
-.draft-warn { margin: 8px 0 0; font-size: 13px; color: var(--ink-2); }
-.draft-text { margin: 10px 0 0; max-height: 250px; overflow: auto; white-space: pre-wrap;
-  word-break: break-word; color: var(--muted); background: #fff; border: 1px solid var(--line);
-  border-radius: 8px; padding: 9px 10px;
-  font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-.draft[data-state="ecarte"] .draft-text { display: none; }
+/* --------------------------- rédaction en cours, DANS la carte (web-clinician-v3-001) */
+/* Une seule carte, trois états lisibles. Le texte montré ici est du texte **reconnu** du
+   générateur (décodeur d'affichage), jamais son JSON brut ; il n'est jamais copiable et la
+   mention « non vérifiée » ne disparaît qu'avec l'objet `done`. */
+.drafting { border-left: 3px solid var(--cond-line); background: #fffdf7; border-radius: 8px;
+  padding: 10px 12px; margin: 0 0 14px; }
+#answerCard[data-view="search"] .drafting,
+#answerCard[data-view="checking"] .drafting { border-left-color: var(--line-2); background: var(--bg); }
+#answerCard[data-view="checking"] .drafting { border-left-color: var(--accent-line); background: var(--accent-bg); }
+.draft-flag { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--cond); }
+#answerCard[data-view="search"] .draft-flag,
+#answerCard[data-view="checking"] .draft-flag { color: var(--ink-2); font-weight: 650; }
+.drafting-list { margin: 0; padding-left: 22px; }
+.drafting-list li { margin: 0 0 8px; font-size: 17px; color: var(--ink); }
+.drafting-list li::marker { color: var(--muted); }
+.draft-more { margin: 8px 0 0; }
 
 /* ------------------------------------------------------------------ carte réponse */
 .answer[data-status="ANSWER"] { border-color: var(--accent-line); }
@@ -155,6 +155,13 @@ summary:focus-visible, .state-retry:focus-visible, .hist:focus-visible {
 .refs { display: inline-flex; gap: 4px; margin-left: 5px; vertical-align: 1px; }
 .ref-chip { font-size: 12px; font-weight: 700; background: #eef1f4; color: var(--ink-2);
   border-radius: 6px; padding: 1px 6px; white-space: nowrap; }
+/* Une puce de citation est un accès à la preuve : tactile d'abord (44 px de haut, cible
+   élargie), et jamais un simple texte décoratif. */
+button.ref-chip { border: 1px solid var(--line-2); min-height: 44px; padding: 0 12px;
+  font: inherit; font-size: 13px; cursor: pointer; touch-action: manipulation; }
+button.ref-chip:hover { background: #e3e8ed; }
+.source.is-jump { outline: 3px solid var(--focus); outline-offset: 3px; }
+.source:target { outline: 3px solid var(--focus); outline-offset: 3px; }
 .unresolved { display: inline-block; margin-left: 6px; font-size: 12px; color: var(--cond);
   background: var(--cond-bg); border: 1px solid var(--cond-line); border-radius: 6px; padding: 1px 6px; }
 #limits { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
@@ -298,3 +305,75 @@ summary:focus-visible, .state-retry:focus-visible, .hist:focus-visible {
    notre propre CSS (grille, flex) reforme le contenu « caché » et l'écran clinique
    réaffiche SHA, imports et listes de questions. */
 details:not([open]) > :not(summary) { display: none !important; }
+
+/* ------------------------------------------------------------------ mobile (web-clinician-v3-001) */
+/* Zones de sécurité iPhone : le contenu ne passe jamais sous la barre de statut ni sous la
+   barre de gestes. `viewport-fit=cover` est posé dans index.html pour que ces variables aient
+   un effet (sans cover, l'iPhone ne donne pas les marges). */
+.wrap { padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right)); }
+main.wrap { padding-top: max(14px, env(safe-area-inset-top));
+  padding-bottom: calc(28px + env(safe-area-inset-bottom)); }
+.masthead { padding-top: max(10px, env(safe-area-inset-top)); }
+.site-foot { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+textarea, input, select, button, summary, .chip, .link, .hist { font-size: 16px; }
+   /* 16 px = pas de zoom automatique d'iOS sur le champ de saisie */
+.btn, button.ref-chip, .state-retry, .hist, .chip, summary { touch-action: manipulation; }
+@media (hover: none) { .btn:hover { background: #fff; } .btn.primary:hover { background: var(--accent); } }
+
+/* Cibles tactiles : 44 px minimum, y compris les raccourcis discrets. */
+.chip, .hist { min-height: 44px; display: inline-flex; align-items: center; }
+.state-retry { min-height: 44px; padding: 0 10px; }
+.options > summary { min-height: 44px; display: flex; align-items: center; }
+
+@media (max-width: 430px) {
+  .answer-head { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; }
+  .answer-meaning { grid-column: 1 / -1; }
+  .btn-row .btn { flex: 1 1 100%; }                   /* l'envoi occupe la largeur du pouce */
+  .claims li, .drafting-list li { font-size: 16.5px; }
+  .excerpt { font-size: 15px; }
+  .src-meta { gap: 6px; }
+  .src-meta span { font-size: 12.5px; }
+}
+
+/* Pastille d'état : avant authentification, la page ne peut pas savoir — le dire vaut mieux
+   qu'afficher « indisponible » sur un 401 attendu. */
+.state[data-state="attente"] { color: var(--muted); }
+.state[data-state="attente"] .state-dot { background: var(--line-2); }
+
+/* Modèle réellement servi (lu dans la décharge, pas dans le sélecteur). */
+.answer-model { font-size: 12px; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 6px; padding: 1px 7px; }
+
+/* ── preuve à trois niveaux (web-clinician-v3-002, lot C) ─────────────────────────────
+   La vue mise en page est lue par défaut ; le brut et le contexte sont dépliables. Une
+   seule règle tient tout : rien n'est jamais caché sans bouton visible sous les doigts.
+   Palette claire reprise de :root — le mode Sources n'a pas de thème à lui. */
+.src-preuve { border-left: 3px solid var(--line-2); padding-left: 10px; margin: 10px 0 8px; }
+.preuve-vue p { margin: 0 0 8px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.preuve-vue .ev-titre { font-weight: 650; }
+.preuve-vue ul.ev-liste { list-style: disc; margin: 0 0 8px; padding-left: 22px; }
+.preuve-vue .ev-item-numerote { margin: 0 0 6px; padding-left: 22px; text-indent: -1.4em; }
+.preuve-vue.est-pliee { max-height: 260px; overflow: hidden;
+  -webkit-mask-image: linear-gradient(#000 72%, transparent);
+  mask-image: linear-gradient(#000 72%, transparent); }
+.preuve-actions, .preuve-plus { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; }
+.bouton-preuve { min-height: 44px; padding: 8px 12px; font: inherit; font-size: 14px;
+  background: var(--paper); color: var(--ink-2); border: 1px solid var(--line-2);
+  border-radius: 8px; cursor: pointer; touch-action: manipulation; }
+.bouton-preuve:hover { background: var(--bg); }
+.bouton-preuve:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.preuve-brut pre { margin: 8px 0; padding: 10px; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; white-space: pre-wrap;
+  overflow-wrap: anywhere; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-height: 420px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain; }
+.contexte { margin: 8px 0 0; display: grid; grid-template-columns: minmax(96px, 34%) 1fr;
+  gap: 4px 10px; }
+.contexte dt { color: var(--muted); font-size: 13px; }
+.contexte dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+@media (max-width: 430px) {
+  .preuve-vue.est-pliee { max-height: 208px; }
+  .contexte { grid-template-columns: 1fr; gap: 2px; }
+  .contexte dd { margin-bottom: 6px; }
+}

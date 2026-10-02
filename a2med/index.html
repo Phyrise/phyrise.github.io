@@ -2,10 +2,10 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>A²-Med — réponses médicales sourcées</title>
 <meta name="description" content="Question médicale, réponse française citée, extraite des recommandations SpILF locales.">
-<link rel="stylesheet" href="./style.css?v=e6d13b70">
+<link rel="stylesheet" href="./style.css?v=88cb6f97">
 </head>
 <body data-api="https://mel-mandate-carter-erik.trycloudflare.com">
 <div id="passwordGate" class="password-gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
@@ -13,8 +13,8 @@
     <h1 id="gateTitle">A2-Med</h1>
     <p>👀</p>
     <label for="sitePassword">Mot de passe</label>
-    <input id="sitePassword" type="password" autocomplete="current-password" required>
-    <button type="submit">Je suis la meilleure docteure</button>
+    <input id="sitePassword" type="password" autocomplete="current-password" enterkeyhint="send" required>
+    <button type="submit" id="passwordSend">Je suis la meilleure docteure</button>
     <p id="passwordError" class="password-error" role="alert" hidden>Mot de passe incorrect.</p>
   </form>
 </div>
@@ -27,7 +27,7 @@
 <header class="masthead">
   <div class="wrap mast-top">
     <p class="brand">A²-Med</p>
-    <p class="state" id="health" role="status" aria-live="polite">
+    <p class="state" id="health" role="status">
       <span class="state-dot" aria-hidden="true"></span>
       <span id="healthText">vérification du service…</span>
       <button type="button" class="state-retry" id="healthRefresh" hidden>ré-essayer</button>
@@ -92,13 +92,21 @@
   </section>
 
   <section id="result" hidden>
-    <article class="panel answer" id="answerCard" data-status="">
+    <article class="panel answer" id="answerCard" data-view="idle" data-status="">
       <header class="answer-head">
         <span class="answer-code mono" id="statusCode"></span>
         <span class="answer-meaning" id="statusMeaning"></span>
         <span class="answer-time mono" id="answerTime"></span>
+        <span class="answer-model mono" id="answerModel" hidden></span>
       </header>
       <p class="provisional-banner" id="provisionalBanner" hidden></p>
+      <!-- UNE SEULE CARTE : le texte en rédaction vit ici, au même endroit, et y est remplacé
+           par la réponse validée. `done` reste la seule autorité du résultat. -->
+      <div class="drafting" id="drafting" hidden>
+        <p class="draft-flag" id="draftFlag" aria-live="off">Rédaction en cours — non vérifiée</p>
+        <ol class="claims drafting-list" id="draftList" aria-live="off"></ol>
+        <p class="fine draft-more" id="draftMore" hidden></p>
+      </div>
       <div id="answer"></div>
       <div id="limits" hidden></div>
     </article>
@@ -120,13 +128,8 @@
     </div>
   </section>
 
-  <!-- Brouillon du générateur : AU-DESSOUS de la carte validée dans le DOM, donc jamais lu
-       comme la réponse ; pendant la rédaction la carte validée est masquée par le front. -->
-  <details class="panel draft" id="draft" data-state="redaction" hidden>
-    <summary class="draft-label" id="draftLabel">Brouillon du générateur — non vérifié</summary>
-    <p class="draft-warn" id="draftWarn"></p>
-    <pre id="draftText" class="draft-text"></pre>
-  </details>
+  <!-- Le brouillon séparé a été retiré (web-clinician-v3-001) : la rédaction se lit dans
+       `#answerCard`, et le texte brut du générateur n'est plus jamais montré tel quel. -->
 
   <section class="history" id="history" hidden>
     <div class="hist-head">
@@ -146,6 +149,8 @@
 </footer>
 
 <script src="./a2med_contract.js?v=a77957cf"></script>
-<script src="./app.js?v=c323ac18"></script>
+<script src="./a2med_stream_view.js?v=6c725126"></script>
+<script src="./a2med_evidence_view.js?v=91acf731"></script>
+<script src="./app.js?v=49c6c6c4"></script>
 </body>
 </html>
