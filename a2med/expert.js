@@ -18,7 +18,7 @@
     campagne: null, session: null, item: null, index: 0,
     minute: 0, ouverteAvantVerdict: false, reponseOuverte: false,
     enCours: false, dernierVerdict: null,
-    positions: {}, plies: {},
+    positions: {}, plies: {}, documents: {},
   };
 
   /* ------------------------------------------------------------------ reprise et file locale
@@ -58,23 +58,31 @@
     const it = E.item;
     if (!it || !E.session) return;
     E.positions[it.item_id] = Math.round(window.scrollY || window.pageYOffset || 0);
-    E.plies[it.item_id] = [...document.querySelectorAll("#item-evidence details")]
+    E.plies[it.item_id] = [...document.querySelectorAll("#item-evidence details:not(.doc-vue)")]
       .map((d, i) => (d.open ? "o" : "f")) .join("");
+    E.documents[it.item_id] = [...document.querySelectorAll("#item-evidence .doc-vue")]
+      .map(d => d.open ? "o" : "f").join("");
     jsonEcrit(CLE_POSITIONS, { session_id: E.session.session_id, positions: E.positions,
-                               plies: E.plies });
+                               plies: E.plies, documents: E.documents });
   }
 
 
+  // Shared authenticated transport also serves original page images and PDFs.
+  function documentFetch(path, options = {}) {
+    const headers = new Headers(options.headers || {});
+    const session = sessionStorage.getItem("a2med_proxy_session");
+    if (session) headers.set("X-A2Med-Session", session);
+    return fetch(API_BASE + path, { ...options, headers, credentials: "include" });
+  }
+
   // ------------------------------------------------------------------ appels
   async function api(path, options = {}) {
-    const session = sessionStorage.getItem("a2med_proxy_session");
     const headers = options.body ? { "Content-Type": "application/json" } : {};
-    if (session) headers["X-A2Med-Session"] = session;
     // un corps implique POST : les appelants ne le répètent pas (et un GET+body est refusé)
     const method = options.method || (options.body ? "POST" : "GET");
     let response;
     try {
-      response = await fetch(API_BASE + path, {
+      response = await documentFetch(path, {
         method, headers,
         body: options.body ? JSON.stringify(options.body) : undefined,
         credentials: "include",
@@ -219,9 +227,9 @@
       const mem = jsonLu(CLE_POSITIONS);
       if (mem && mem.session_id === s.session_id) {   // reprise du même trajet, pas d'un ancien
         E.positions = mem.positions || {};
-        E.plies = mem.plies || {};
+        E.plies = mem.plies || {}; E.documents = mem.documents || {};
       } else {
-        E.positions = {}; E.plies = {};
+        E.positions = {}; E.plies = {}; E.documents = {};
       }
       await montrerItem(E.index);
     } catch (e) {
@@ -261,6 +269,7 @@
     $("item-claim").textContent = it.claim || "";
     $("item-consigne").textContent = s.consigne || "";
     const ev = $("item-evidence");
+    if (window.A2MEDDocumentView) window.A2MEDDocumentView.nettoyer(ev);
     ev.textContent = "";
     dessinePreuves(it);
 
@@ -308,10 +317,13 @@
     // position de lecture et preuves ouvertes ou fermées : rendues à qui revient
     const code = (E.plies || {})[it.item_id];
     if (code) {
-      [...document.querySelectorAll("#item-evidence details")].forEach((d, i) => {
+      [...document.querySelectorAll("#item-evidence details:not(.doc-vue)")].forEach((d, i) => {
         d.open = code[i] === "o";
       });
     }
+    const docs = (E.documents || {})[it.item_id];
+    if (docs) [...document.querySelectorAll("#item-evidence .doc-vue")]
+      .forEach((d, i) => { d.open = docs[i] === "o"; });
     const y = (E.positions || {})[it.item_id];
     window.scrollTo(0, Number.isFinite(y) ? y : 0);
   }
@@ -329,7 +341,7 @@
       const ssource = document.createElement("p"); ssource.className = "source";
       const a = document.createElement("span"); a.className = "alias"; a.textContent = e.alias;
       const d = document.createElement("span"); d.className = "doc";
-      d.textContent = [e.doc, e.page ? "p. " + e.page : ""].filter(Boolean).join(" · ");
+      d.textContent = [e.doc, (e.page !== undefined && e.page !== null && e.page !== "") ? "repère du registre " + e.page : ""].filter(Boolean).join(" · ");
       ssource.append(a, d);
       c.append(ssource);
       const brut = String(e.text == null ? "" : e.text);
@@ -372,7 +384,7 @@
         const dl = document.createElement("dl"); dl.className = "contexte";
         const champs = [
           ["Document", e.doc || "non enregistré"],
-          ["Page/diapositive", (e.page === undefined || e.page === null || e.page === "")
+          ["Repère du registre", (e.page === undefined || e.page === null || e.page === "")
             ? "non enregistrée" : String(e.page)],
           ["Section du document", "non enregistrée dans la campagne"],
           ["Autre passage de ce document", autres.length ? autres.join(" · ") : "aucun dans cet item"],
@@ -390,6 +402,11 @@
       }
       c.append(corps);
       ev.appendChild(c);
+      const D = window.A2MEDDocumentView;
+      if (D) {
+        c.append(D.monter(API_BASE, { doc: e.doc, page: e.page },
+          { apiFetch: documentFetch, expert: true }));
+      }
     });
   }
 
@@ -397,6 +414,8 @@
   $("item-evidence").addEventListener("click", (ev) => {
     if (ev.target.closest("details, summary")) positionActuelle();
   });
+
+  $("item-evidence").addEventListener("toggle", positionActuelle, true);
 
   // ouverture de la réponse complète : mesurée, car elle peut avoir influencé le jugement
   $("plieuse-reponse").addEventListener("toggle", async () => {

@@ -1,18 +1,19 @@
 const API_BASE = String(document.body.dataset.api || window.A2MED_API_BASE || "")
   .replace(/\/$/, "");
 const apiFetch = (path, init = {}) => {
+  const { preserveDocumentView, ...requestInit } = init;
   const headers = new Headers(init.headers || {});
   // Session proxy par en-tête (mobile : cookies tiers cross-site bloqués) ; le cookie
   // continue de marcher en parallèle sur les navigateurs qui l'autorisent.
   const session = sessionStorage.getItem("a2med_proxy_session");
   if (session) headers.set("X-A2Med-Session", session);
-  return fetch(API_BASE + path, { ...init, headers, credentials: "include" })
+  return fetch(API_BASE + path, { ...requestInit, headers, credentials: "include" })
     .catch((e) => { throw window.A2MEDContract.networkError(API_BASE, e); })
     .then(response => {
       // 401 alors qu'une session était posée = session morte (proxy redémarré,
       // token éphémère) → re-passer par le gate. 401 sans session = normal
       // (le gate est encore visible) : on ne reload pas.
-      if (response.status === 401 && sessionStorage.getItem("a2med_test_unlocked") === "1") {
+      if (!preserveDocumentView && response.status === 401 && sessionStorage.getItem("a2med_test_unlocked") === "1") {
         sessionStorage.removeItem("a2med_proxy_session");
         sessionStorage.removeItem("a2med_test_unlocked");
         location.reload();
@@ -420,8 +421,11 @@ function preuveHtml(s, ex, src) {
       ${champs.map(([c, v]) => `<dt>${c}</dt><dd>${v}</dd>`).join('')}
       </dl>
       <p class="fine">La page indiquée est celle du fichier extrait ; la page imprimée du document
-        peut être décalée (couverture, sommaire). Aucun lien vers le document n’est affiché :
-        l’URL canonique n’est pas dans les données transmises.</p></div>
+        peut être décalée (couverture, sommaire). La vue « document original » ci-dessus ne vient
+        pas d'une URL transmise par l'API — le serveur retrouve le fichier dans son corpus et la
+        correspondance est vérifiée texte par texte ; si elle ne l'est pas, il le dit.</p></div>
+    <div class="doc-emplacement" data-doc="${esc(s.document)}"
+         data-page="${esc(s.page === undefined || s.page === null ? '' : s.page)}"></div>
   </div>`;
 }
 
@@ -466,24 +470,54 @@ function renderSources(data) {
   $('sourcesTitle').textContent = data.source_only
     ? `Passages retrouvés — sans synthèse (${src.length})`
     : `Sources citées (${src.length})`;
+  if (window.A2MEDDocumentView) window.A2MEDDocumentView.nettoyer($('sources'));
   $('sources').innerHTML = src.map((s, index) => {
     const ex = String(s.excerpt ?? '');
     const annee = sourceYear(s.document);
     return `<article class="source" id="src-${esc(s.ref)}">
       <h3 class="src-title"><span class="ref">${esc(s.ref)}</span> ${esc(humanDoc(s.document))}</h3>
       <p class="src-meta"><span>${esc(s.document)}</span>
-        <span>Page/diapositive ${esc(s.page === undefined || s.page === null || s.page === ''
+        <span>Repère du registre ${esc(s.page === undefined || s.page === null || s.page === ''
           ? 'non renseignée' : s.page)}</span>
         ${annee ? `<span>année du fichier : ${esc(annee)}</span>` : ''}
         <span>${esc(sourceType(s.document))}</span>
         ${data.source_only ? `<span>Rang ${index + 1}/${src.length}</span>` : ''}</p>
       <p class="src-meta src-meta-detail">${sourceBadges(s).join('')}</p>
-      ${preuveHtml(s, ex, src)}
-      <details class="source-tech"><summary>Identifiant technique</summary>
+      ${preuveHtml(s, ex, src)}      <details class="source-tech"><summary>Identifiant technique</summary>
         <p class="fine mono">${esc(s.passage_id)}${data.source_only && Number.isFinite(s.rerank_score)
           ? ` · score ${esc(s.rerank_score.toFixed(3))}` : ''}</p></details>
       </article>`;
   }).join('');
+  installerVuesDocument($('sources'));
+}
+
+/* Vue « document original » : le module est asynchrone et dépend du serveur, donc il se monte
+   APRÈS le rendu HTML des cartes, en remplacement de l'emplacement vide posé par `preuveHtml`.
+   Installé là et non au chargement : les cartes sont recréées à chaque réponse. */
+function installerVuesDocument(racine) {
+  const V = window.A2MEDDocumentView;
+  const emplacements = [...racine.querySelectorAll('.doc-emplacement')];
+  if (!emplacements.length) return;
+  if (!V) {
+    // même règle que le front expert : pas de vue improvisée quand le module manque, on la nomme
+    emplacements.forEach((e) => {
+      const p = document.createElement('p');
+      p.className = 'fine';
+      p.textContent = 'Vue « document original » indisponible : module non chargé.';
+      e.append(p);
+    });
+    return;
+  }
+  emplacements.forEach((e) => {
+    V.creer(API_BASE, { document: e.dataset.doc, page: e.dataset.page }, {
+      apiFetch: (path, init) => apiFetch(path, { ...init, preserveDocumentView: true })
+    })
+      .then((bloc) => {
+        if (e.isConnected) e.replaceWith(bloc);
+        else bloc._disposeDocumentView();
+      })
+      .catch(() => {});
+  });
 }
 
 function renderTech(data) {
