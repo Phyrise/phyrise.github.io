@@ -11,25 +11,48 @@ const A2MEDDocumentView = (() => {
     const node = el('button', cls, text); node.type = 'button'; return node;
   };
 
-  async function checked(fetcher, path, accept) {
+  function requestError(status, kind) {
+    const auth = status === 401 || status === 403;
+    const message = auth
+      ? 'Accès expiré ou refusé. Reconnectez-vous pour ouvrir le document ; le texte cité reste disponible.'
+      : status === 404 || status === 410
+        ? 'Document original non disponible pour cette référence. Le texte cité reste disponible.'
+        : status === 400 || status === 415 || status === 422
+          ? 'Ce document original ne peut pas être ouvert. Le texte cité reste disponible.'
+          : status === 409
+            ? 'La page précise de cette référence ne peut pas être confirmée.'
+            : (kind === 'pdf' ? 'PDF complet' : 'Page originale') + ' temporairement indisponible (' + status + ').';
+    const error = new Error(message);
+    error.status = status;
+    error.retryable = status === 408 || status === 425 || status === 429 || status >= 500;
+    return error;
+  }
+
+  async function checked(fetcher, path, accept, kind) {
     const response = await fetcher(path, { headers: { Accept: accept } });
-    if (response.status === 401 || response.status === 403) {
-      throw new Error('Accès expiré ou refusé. Reconnectez-vous pour ouvrir le document ; le texte cité reste disponible.');
-    }
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.error || 'Page originale non disponible (' + response.status + ').');
-    }
+    if (!response.ok) throw requestError(response.status, kind);
     return response;
   }
 
+  // Only a confirmed, explicitly one-based physical page may select a PDF page.
+  function physicalPage(status) {
+    const page = status && status.page_physique_1based;
+    return Number.isInteger(page) && page > 0 && Number.isInteger(status.nb_pages)
+      && page <= status.nb_pages ? page : null;
+  }
+
   function caption(status) {
-    const physical = Number.isInteger(status.page_physique_1based)
-      ? status.page_physique_1based : Number(status.page_physique) + 1;
+    const physical = physicalPage(status);
+    const slide = status.slide_1based;
+    const pptx = status.source_type === 'pptx' && Number.isInteger(slide) && slide > 0;
+    return (pptx ? 'Diapositive ' + slide + ' · page PDF ' : 'Page PDF ')
+      + physical + ' / ' + status.nb_pages;
+  }
+
+  function printedCaption(status) {
     const printed = status.page_du_document;
-    return 'Page PDF ' + physical + ' / ' + status.nb_pages
-      + (printed !== null && printed !== undefined && printed !== ''
-        ? ' · numéro imprimé ' + printed : ' · numéro imprimé non identifié');
+    return printed !== null && printed !== undefined && printed !== ''
+      ? 'Numéro imprimé : ' + printed : 'Numéro imprimé non identifié';
   }
 
   function enlarge(src, label, trigger) {
@@ -101,17 +124,20 @@ const A2MEDDocumentView = (() => {
     node.append(summary, content); content.append(state);
     const doc = source.document || source.doc || '';
     const page = source.page;
+    const hasPage = page !== undefined && page !== null && page !== '';
     const fetcher = options.apiFetch;
     const urls = new Set();
+    const unlocated = 'Page précise non localisée — PDF complet disponible';
     let disposed = false, loaded = false, busy = false, dismiss, version;
+    let pdfInfo, pageStatus, pdfButton, authBlocked = false, authMessage;
     node._disposeDocumentView = () => {
       disposed = true;
       if (dismiss) dismiss();
       urls.forEach(url => URL.revokeObjectURL(url)); urls.clear(); views.delete(node);
     };
     views.add(node);
-    if (!doc || page === undefined || page === null || page === '') {
-      state.textContent = 'Page originale non disponible : document ou page non transmis.';
+    if (!doc) {
+      state.textContent = 'Document original non disponible : document non transmis.';
       return node;
     }
     if (typeof fetcher !== 'function') {
@@ -119,22 +145,96 @@ const A2MEDDocumentView = (() => {
       return node;
     }
     const path = kind => '/api/document/' + kind + '?doc=' + encodeURIComponent(doc)
-      + (kind === 'pdf' ? '' : '&page=' + encodeURIComponent(page))
-      + (version && kind !== 'status' ? '&v=' + encodeURIComponent(version) : '');
+      + (kind === 'status' || kind === 'page' ? '&page=' + encodeURIComponent(page) : '')
+      + (version && (kind === 'pdf' || kind === 'page') ? '&v=' + encodeURIComponent(version) : '');
     const retry = button('Réessayer', 'doc-bouton'); retry.hidden = true;
     content.append(retry);
+    const explain = error => error instanceof TypeError
+      ? 'Impossible de joindre le service documentaire. Le texte cité reste disponible.' : error.message;
+    const retryable = error => error instanceof TypeError || error.retryable === true;
+    const blockAuth = error => {
+      if (error.status === 401 || error.status === 403) {
+        authBlocked = true; authMessage = error.message;
+        if (pdfButton) pdfButton.disabled = true;
+      }
+    };
+    const addPdfButton = () => {
+      if (pdfButton) return;
+      pdfButton = button('Ouvrir le PDF complet', 'doc-bouton');
+      let permanentFailure = false, downloadLink;
+      pdfButton.addEventListener('click', async () => {
+        if (disposed || authBlocked || pdfButton.disabled) return;
+        // Open the tab within the gesture, before the authenticated request completes.
+        const tab = window.open('about:blank', '_blank');
+        if (tab) { tab.opener = null; tab.document.title = 'Chargement du document…'; }
+        pdfButton.disabled = true;
+        try {
+          const response = await checked(fetcher, path('pdf'), 'application/pdf', 'pdf');
+          const blob = await response.blob();
+          if (disposed || authBlocked) { if (tab) tab.close(); return; }
+          const url = URL.createObjectURL(blob); urls.add(url);
+          const physical = physicalPage(pageStatus);
+          const target = url + (physical !== null ? '#page=' + physical : '');
+          if (tab && !tab.closed) tab.location.replace(target);
+          else {
+            if (!downloadLink) {
+              downloadLink = el('a', 'doc-bouton', 'Ouvrir le PDF téléchargé');
+              downloadLink.target = '_blank'; downloadLink.rel = 'noopener';
+              content.append(downloadLink);
+            }
+            downloadLink.href = target;
+            state.textContent = (pageStatus ? caption(pageStatus) : unlocated)
+              + ' · Le navigateur a bloqué le nouvel onglet : utilisez le lien ci-dessous.';
+          }
+        } catch (error) {
+          if (tab) tab.close();
+          if (!disposed) {
+            blockAuth(error); permanentFailure = !retryable(error);
+            state.textContent = authBlocked ? authMessage : explain(error);
+          }
+        } finally { pdfButton.disabled = disposed || authBlocked || permanentFailure; }
+      });
+      content.append(pdfButton);
+      if (options.expert) content.append(el('p', 'doc-aide', 'Le document apporte du contexte ; le verdict porte sur les passages cités.'));
+    };
     const load = async () => {
-      if (disposed || loaded || busy) return;
+      if (disposed || loaded || busy || authBlocked) return;
       busy = true; retry.hidden = true; state.textContent = 'Chargement de la page originale…';
       try {
-        const status = await (await checked(fetcher, path('status'), 'application/json')).json();
-        if (disposed) return;
-        version = status.empreinte_sha256;
-        const response = await checked(fetcher, path('page'), 'image/png');
+        if (!pdfInfo) {
+          let info;
+          if (hasPage) {
+            try {
+              const response = await checked(fetcher, path('status'), 'application/json', 'status');
+              info = await response.json();
+              if (physicalPage(info) !== null) pageStatus = info;
+            } catch (error) {
+              if (error.status !== 409) throw error;
+            }
+          }
+          if (disposed || authBlocked) return;
+          if (!info) {
+            const response = await checked(fetcher, path('info'), 'application/json', 'info');
+            info = await response.json();
+          }
+          if (disposed) return;
+          if (info.pdf !== true || !Number.isInteger(info.nb_pages) || info.nb_pages < 1
+              || typeof info.empreinte_sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(info.empreinte_sha256)) {
+            throw new Error('Document original non disponible : le PDF ne peut pas être confirmé.');
+          }
+          pdfInfo = info; version = info.empreinte_sha256;
+          // Complete-document access is ready before the optional page image request.
+          addPdfButton();
+        }
+        if (!pageStatus) {
+          state.textContent = unlocated; loaded = true; return;
+        }
+        state.textContent = caption(pageStatus) + ' · Chargement de l’aperçu…';
+        const response = await checked(fetcher, path('page'), 'image/png', 'page');
         const blob = await response.blob();
-        if (disposed) return;
+        if (disposed || authBlocked) return;
         const src = URL.createObjectURL(blob); urls.add(src);
-        const label = caption(status);
+        const label = caption(pageStatus);
         state.textContent = label;
         const preview = button('', 'doc-agrandir');
         preview.setAttribute('aria-label', 'Agrandir : ' + label);
@@ -142,39 +242,23 @@ const A2MEDDocumentView = (() => {
         preview.append(img);
         preview.addEventListener('click', () => { dismiss = enlarge(src, label, preview); });
         const hint = el('p', 'doc-aide', 'Page complète. Touchez la page pour agrandir, puis utilisez + et − ou le zoom de votre navigateur.');
-        const pdf = button('Ouvrir le PDF complet', 'doc-bouton');
-        pdf.addEventListener('click', async () => {
-          // Open the tab within the gesture, before the authenticated request completes.
-          const tab = window.open('about:blank', '_blank');
-          if (tab) { tab.opener = null; tab.document.title = 'Chargement du document…'; }
-          pdf.disabled = true;
-          try {
-            const pdfResponse = await checked(fetcher, path('pdf'), 'application/pdf');
-            const pdfBlob = await pdfResponse.blob();
-            if (disposed) { if (tab) tab.close(); return; }
-            const pdfUrl = URL.createObjectURL(pdfBlob); urls.add(pdfUrl);
-            const physical = Number.isInteger(status.page_physique_1based)
-              ? status.page_physique_1based : Number(status.page_physique) + 1;
-            if (tab && !tab.closed) tab.location.replace(pdfUrl + '#page=' + physical);
-            else {
-              const link = el('a', 'doc-bouton', 'Ouvrir le PDF téléchargé');
-              link.href = pdfUrl + '#page=' + physical; link.target = '_blank'; link.rel = 'noopener';
-              content.append(link);
-              state.textContent = label + ' · Le navigateur a bloqué le nouvel onglet : utilisez le lien ci-dessous.';
-            }
-          } catch (error) {
-            if (tab) tab.close();
-            state.textContent = error.message;
-          } finally { pdf.disabled = false; }
+        const printed = el('p', 'doc-legende', printedCaption(pageStatus));
+        img.addEventListener('error', () => {
+          if (disposed) return;
+          preview.remove(); hint.remove(); printed.remove();
+          URL.revokeObjectURL(src); urls.delete(src);
+          state.textContent = authBlocked ? authMessage
+            : label + ' · Aperçu indisponible. Le PDF complet reste disponible.';
         });
-        content.append(preview, hint, pdf);
-        if (options.expert) content.append(el('p', 'doc-aide', 'Le document apporte du contexte ; le verdict porte sur les passages cités.'));
+        content.append(preview, printed, hint);
         loaded = true;
       } catch (error) {
         if (!disposed) {
-          state.textContent = error instanceof TypeError
-            ? 'Impossible de joindre le service documentaire. Le texte cité reste disponible.' : error.message;
-          retry.hidden = false;
+          blockAuth(error);
+          state.textContent = authBlocked ? authMessage : !pdfInfo ? explain(error)
+            : caption(pageStatus) + ' · Aperçu indisponible. Le PDF complet reste disponible.';
+          retry.hidden = !retryable(error) || authBlocked;
+          loaded = retry.hidden;
         }
       } finally { busy = false; }
     };
@@ -190,6 +274,6 @@ const A2MEDDocumentView = (() => {
     if (!event.persisted) [...views].forEach(node => node._disposeDocumentView());
   });
   return { creer: async (...args) => create(...args), monter: create,
-    nettoyer: cleanup, version: '002-authenticated' };
+    nettoyer: cleanup, version: '003-document-catalog' };
 })();
 window.A2MEDDocumentView = A2MEDDocumentView;
