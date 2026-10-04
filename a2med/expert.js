@@ -17,8 +17,8 @@
     expert: localStorage.getItem("a2med_expert_id") || "",
     campagne: null, session: null, item: null, index: 0,
     minute: 0, ouverteAvantVerdict: false, reponseOuverte: false,
-    enCours: false, dernierVerdict: null,
-    positions: {}, plies: {}, documents: {},
+    enCours: false, enNavigation: false, dernierVerdict: null,
+    positions: {}, plies: {}, documents: {}, textes: {},
   };
 
   /* ------------------------------------------------------------------ reprise et file locale
@@ -58,12 +58,14 @@
     const it = E.item;
     if (!it || !E.session) return;
     E.positions[it.item_id] = Math.round(window.scrollY || window.pageYOffset || 0);
-    E.plies[it.item_id] = [...document.querySelectorAll("#item-evidence details:not(.doc-vue)")]
+    E.plies[it.item_id] = [...document.querySelectorAll("#item-evidence details:not(.doc-vue):not(.preuve-texte)")]
       .map((d, i) => (d.open ? "o" : "f")) .join("");
     E.documents[it.item_id] = [...document.querySelectorAll("#item-evidence .doc-vue")]
       .map(d => d.open ? "o" : "f").join("");
+    E.textes[it.item_id] = [...document.querySelectorAll("#item-evidence .preuve-texte")]
+      .map(d => d.open ? "o" : "f").join("");
     jsonEcrit(CLE_POSITIONS, { session_id: E.session.session_id, positions: E.positions,
-                               plies: E.plies, documents: E.documents });
+                               plies: E.plies, documents: E.documents, textes: E.textes });
   }
 
 
@@ -110,7 +112,22 @@
     // les ids réels sont « ecran-nom », « ecran-item »… ; montrer() se nomme sans préfixe
     ECRANS.forEach((e) => { $("ecran-" + e).hidden = e !== nom; });
     $("progression").hidden = nom !== "item";
+    $("navigation-haute").hidden = nom !== "item";
+    majNavigation();
     if (nom !== "item") $("titre-page").textContent = "Retour expert";
+  }
+
+  function majNavigation() {
+    const occupe = E.enCours || E.enNavigation || !E.session;
+    ["btn-precedent", "btn-precedent-haut"].forEach(id => {
+      $(id).disabled = occupe || E.index <= 0;
+    });
+    ["btn-suivant", "btn-suivant-haut"].forEach(id => {
+      $(id).disabled = occupe;
+      $(id).textContent = E.session && E.index >= E.session.n_items - 1
+        ? "Terminer →" : "Suivant →";
+    });
+    $("btn-passer").disabled = occupe;
   }
 
   function direErreur(id, message) {
@@ -227,9 +244,9 @@
       const mem = jsonLu(CLE_POSITIONS);
       if (mem && mem.session_id === s.session_id) {   // reprise du même trajet, pas d'un ancien
         E.positions = mem.positions || {};
-        E.plies = mem.plies || {}; E.documents = mem.documents || {};
+        E.plies = mem.plies || {}; E.documents = mem.documents || {}; E.textes = mem.textes || {};
       } else {
-        E.positions = {}; E.plies = {}; E.documents = {};
+        E.positions = {}; E.plies = {}; E.documents = {}; E.textes = {};
       }
       await montrerItem(E.index);
     } catch (e) {
@@ -317,10 +334,13 @@
     // position de lecture et preuves ouvertes ou fermées : rendues à qui revient
     const code = (E.plies || {})[it.item_id];
     if (code) {
-      [...document.querySelectorAll("#item-evidence details:not(.doc-vue)")].forEach((d, i) => {
+      [...document.querySelectorAll("#item-evidence details:not(.doc-vue):not(.preuve-texte)")].forEach((d, i) => {
         d.open = code[i] === "o";
       });
     }
+    const textes = (E.textes || {})[it.item_id];
+    if (textes) [...document.querySelectorAll("#item-evidence .preuve-texte")]
+      .forEach((d, i) => { d.open = textes[i] === "o"; });
     const docs = (E.documents || {})[it.item_id];
     if (docs) [...document.querySelectorAll("#item-evidence .doc-vue")]
       .forEach((d, i) => { d.open = docs[i] === "o"; });
@@ -400,7 +420,11 @@
         const t2 = document.createElement("p"); t2.textContent = brut;
         corps.append(t2);
       }
-      c.append(corps);
+      const texte = document.createElement("details"); texte.className = "preuve-texte";
+      const titreTexte = document.createElement("summary");
+      titreTexte.textContent = "Texte de la preuve";
+      texte.append(titreTexte, corps);
+      c.append(texte);
       ev.appendChild(c);
       const D = window.A2MEDDocumentView;
       if (D) {
@@ -432,8 +456,8 @@
   });
 
   async function trancher(verdict, silencieux) {
-    if (E.enCours || !E.session || !E.item) return;
-    E.enCours = true;
+    if (E.enCours || E.enNavigation || !E.session || !E.item) return;
+    E.enCours = true; majNavigation();
     E.dernierVerdict = verdict;
     document.querySelectorAll(".verdict").forEach((b) => { b.disabled = true; });
     const item = E.item;
@@ -474,17 +498,17 @@
       confirmer(verdict === "SKIPPED" ? "Passé" : modif ? "Modifié et enregistré" : "Enregistré");
       progresser(Math.min((E.session.n_annotes || 0) + (modif ? 0 : 1), total), total);
       document.querySelectorAll(".verdict").forEach((b) => { b.disabled = false; });
-      E.enCours = false;
+      E.enCours = false; majNavigation();
       // PAS d'enchaînement automatique (demande expresse de la mission v3-002) : le praticien
       // garde la main, et garde la page où il est. On ne déplace la vue que sur son geste.
       if (!silencieux) {
         const suivant = $("btn-suivant");
-        if (suivant && E.index < total - 1) suivant.focus();
+        if (suivant && E.index < total - 1) suivant.focus({ preventScroll: true });
         else montrer("fin");
         if (E.index >= total - 1) finir();
       }
     } catch (e) {
-      E.enCours = false;
+      E.enCours = false; majNavigation();
       document.querySelectorAll(".verdict").forEach((b) => { b.disabled = false; });
       if (e.code === "campagne_version_differente") {
         etatSave("perdu");
@@ -527,16 +551,25 @@
   });
 
   async function naviguer(delta) {
-    if (!E.session) return;
+    if (!E.session || E.enCours || E.enNavigation) return;
     const cible = Math.max(0, Math.min(E.session.n_items - 1, E.index + delta));
-    if (cible === E.index && delta > 0) { montrer("fin"); finir(); return; }
+    if (cible === E.index) {
+      if (delta > 0) { montrer("fin"); finir(); }
+      return;
+    }
+    E.enNavigation = true; majNavigation();
     try {
       await api("/api/expert/navigate", { body: { session_id: E.session.session_id, index: cible } });
-    } catch (e) { if (e.code === "auth") { montrer("auth"); return; } }
-    await montrerItem(cible);
+      await montrerItem(cible);
+    } catch (e) {
+      if (e.code === "auth") montrer("auth");
+      else direErreur("item-erreur", e.message || "Navigation impossible.");
+    } finally { E.enNavigation = false; majNavigation(); }
   }
-  $("btn-precedent").addEventListener("click", () => naviguer(-1));
-  $("btn-suivant").addEventListener("click", () => naviguer(1));
+  ["btn-precedent", "btn-precedent-haut"].forEach(id =>
+    $(id).addEventListener("click", () => naviguer(-1)));
+  ["btn-suivant", "btn-suivant-haut"].forEach(id =>
+    $(id).addEventListener("click", () => naviguer(1)));
   $("btn-retour-liste").addEventListener("click", lister);
 
   function finir() {
@@ -551,7 +584,7 @@
 
   // ------------------------------------------------------------------ raccourcis (desktop, jamais imposés)
   document.addEventListener("keydown", (ev) => {
-    if ($("ecran-item").hidden) return;
+    if ($("ecran-item").hidden || document.querySelector("dialog.doc-agrandissement[open]")) return;
     const champ = document.activeElement;
     if (champ && /INPUT|TEXTAREA/.test(champ.tagName)) return;
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;

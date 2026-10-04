@@ -404,6 +404,7 @@ function preuveHtml(s, ex, src) {
     ['Autre passage de ce document dans la réponse', autres.length ? autres.join(' · ') : 'aucun'],
   ];
   return `<div class="src-preuve" data-preuve="${ref}">
+    <details class="preuve-texte"><summary>Texte du passage</summary>
     <div class="preuve-vue${tropLong ? ' est-pliee' : ''}">${html}</div>
     ${tropLong ? `<p class="preuve-plus"><button type="button" class="bouton-preuve"
       data-action="derouler" data-src="${ref}" aria-expanded="false">Tout afficher
@@ -424,6 +425,7 @@ function preuveHtml(s, ex, src) {
         peut être décalée (couverture, sommaire). La vue « document original » ci-dessus ne vient
         pas d'une URL transmise par l'API — le serveur retrouve le fichier dans son corpus et la
         correspondance est vérifiée texte par texte ; si elle ne l'est pas, il le dit.</p></div>
+    </details>
     <div class="doc-emplacement" data-doc="${esc(s.document)}"
          data-page="${esc(s.page === undefined || s.page === null ? '' : s.page)}"></div>
   </div>`;

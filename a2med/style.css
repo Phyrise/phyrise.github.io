@@ -417,3 +417,12 @@ dialog.doc-agrandissement::backdrop { background: rgba(18,18,22,.94); }
 .doc-resume:focus-visible, .doc-bouton:focus-visible, .doc-agrandir:focus-visible,
 .doc-fermer:focus-visible, .doc-zoom:focus-visible, .doc-pan:focus-visible {
   outline: 3px solid #05b7a4; outline-offset: 3px; }
+
+/* Full passage can be hidden independently of its original PDF page. */
+.preuve-texte { margin: 8px 0 4px; }
+.preuve-texte > summary { min-height: 44px; display: flex; align-items: center;
+  cursor: pointer; list-style: none; font-size: 15px; font-weight: 600; color: var(--accent); }
+.preuve-texte > summary::-webkit-details-marker { display: none; }
+.preuve-texte > summary::before { content: "▸"; margin-right: 8px; }
+.preuve-texte[open] > summary::before { content: "▾"; }
+.preuve-texte > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }

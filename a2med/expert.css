@@ -249,3 +249,18 @@ dialog.doc-agrandissement::backdrop { background: rgba(18,18,22,.94); }
 .doc-resume:focus-visible, .doc-bouton:focus-visible, .doc-agrandir:focus-visible,
 .doc-fermer:focus-visible, .doc-zoom:focus-visible, .doc-pan:focus-visible {
   outline: 3px solid #05b7a4; outline-offset: 3px; }
+
+/* Compact proof cards and the same navigation at the top and bottom. */
+.barre { flex-wrap: wrap; }
+.navigation-haute { display: flex; flex: 1 0 100%; gap: 10px; max-width: 720px;
+  margin: 0 auto; }
+.navigation-haute[hidden] { display: none; }
+.navigation-haute .btn { flex: 1; min-height: 44px; margin: 0; }
+.preuve-texte > summary { min-height: 44px; display: flex; align-items: center;
+  cursor: pointer; list-style: none; font-size: 15px; font-weight: 600; color: var(--accent); }
+.preuve-texte > summary::-webkit-details-marker { display: none; }
+.preuve-texte > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.preuve-texte > summary::before { content: "▸"; margin-right: 8px; }
+.preuve-texte[open] > summary::before { content: "▾"; }
+.preuve-texte > .preuve-corps { margin-top: 6px; }
+@media (max-width: 430px) { .barre .piste { display: none; } }
