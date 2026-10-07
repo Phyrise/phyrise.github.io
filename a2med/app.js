@@ -527,7 +527,7 @@ function installerVuesDocument(racine) {
 function renderTech(data) {
   const t = data.timings || {}, q = data.technique || {}, s = (q.sampling || {});
   const row = (k, v) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`;
-  const st = streamStats;
+  const st = data.guided ? (data.stream_stats || null) : streamStats;
   const stream = st ? [
     row('premier token (côté moteur)', `${st.ttft_s ?? '?'} s`),
     row('rédaction en flux (moteur)', `${st.gen_stream_s ?? '?'} s`),

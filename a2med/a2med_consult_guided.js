@@ -217,7 +217,7 @@
         obsolete_excluded_stems:out.obsolete_excluded_stems || ["non communiqué"],
         sampling:generator.sampling || {temperature:0,max_tokens:2000,enable_thinking:false}
       },
-      guided:true, trace_id:out.trace_id };
+      stream_stats:out.stream_stats || null, guided:true, trace_id:out.trace_id };
   }
   function why(field, c, sources) {
     const ranks = new Set((c.evidence || []).map(x => parseInt(String(x).replace(/\D/g,""),10)));
@@ -349,6 +349,7 @@
     $("copyAllBtn").hidden=true; $("statusCode").textContent="";
     $("statusMeaning").textContent=""; $("answerTime").textContent="";
     $("tech").textContent=""; $("resultTiming").hidden=true;
+    if ($("answerModel")) $("answerModel").hidden=true;
     try {
       const out=await stream("/api/consult-guided/ask/stream",{question},id);
       if(id!==seq||!out)return;
