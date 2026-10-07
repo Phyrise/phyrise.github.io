@@ -266,6 +266,7 @@ const PROXY_SESSION_KEY = "a2med_proxy_session:" + (API_BASE || window.location.
     try {
       const s = await api(`/api/expert/session/${E.session.session_id}?index=${index}`);
       E.session = s; E.index = index; E.item = s.item;
+      labelExport();
       if (!s.item) { montrer("fin"); finir(); return; }
       dessiner(s);
       montrer("item");
@@ -572,6 +573,46 @@ const PROXY_SESSION_KEY = "a2med_proxy_session:" + (API_BASE || window.location.
   ["btn-suivant", "btn-suivant-haut"].forEach(id =>
     $(id).addEventListener("click", () => naviguer(1)));
   $("btn-retour-liste").addEventListener("click", lister);
+
+  // ------------------------------------------------- export de la session courante
+  // Le CSV vient du serveur, tel quel (mêmes colonnes que l'export de campagne, avis complet de la
+  // session) : le front ne reconstruit aucun champ. `session=` est vérifié côté serveur : une
+  // session d'une autre campagne est refusée, et les clics de test faits DANS la session restent
+  // dans l'export (ils ne sont ni supprimés ni requalifiés ici).
+  function labelExport() {
+    const s = E.session;
+    ["export-session", "export-session-fin"].forEach(id => {
+      $(id).textContent = s ? `session ${s.expert_id} · ${String(s.session_id).slice(0, 8)}` : "";
+    });
+  }
+
+  const exportButtons = [$("btn-export-avis"), $("btn-export-avis-fin")];
+  async function exporterAvis() {
+    const s = E.session;
+    if (!s || exportButtons.some(btn => btn.disabled)) return;
+    const errorId = $("ecran-fin").hidden ? "item-erreur" : "fin-erreur";
+    exportButtons.forEach(btn => { btn.disabled = true; });
+    direErreur(errorId, null);
+    try {
+      const csv = await api(`/api/expert/export/${encodeURIComponent(E.campagne.campaign_id)}`
+                            + `?fmt=csv&session=${encodeURIComponent(s.session_id)}`);
+      const sur = String(s.expert_id || "expert").replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 40);
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `avis-${E.campagne.campaign_id}-${sur}.csv`;
+      document.body.appendChild(a);
+      a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      confirmer("Téléchargement CSV lancé");
+    } catch (e) {
+      if (e.code === "auth") { montrer("auth"); return; }
+      direErreur(errorId, e.message || "Téléchargement impossible.");
+    } finally {
+      exportButtons.forEach(btn => { btn.disabled = false; });
+    }
+  }
+  exportButtons.forEach(btn => btn.addEventListener("click", exporterAvis));
 
   function finir() {
     const s = E.session || {};

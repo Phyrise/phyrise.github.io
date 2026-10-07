@@ -109,6 +109,12 @@
     <button class="btn lien" id="btn-passer" title="Ne pas répondre à cet item (S)">Passer</button>
     <button class="btn lien" id="btn-suivant" title="Item suivant (→)">Suivant →</button>
   </div>
+  <!-- export de la session courante : le CSV vient du serveur, tel quel (mêmes colonnes que
+       l'export de campagne) ; le nom de la session est affiché pour qu'on sache ce qu'on emporte. -->
+  <div class="bas">
+    <button class="btn lien" id="btn-export-avis" type="button">Télécharger mes avis — CSV</button>
+    <span class="note" id="export-session"></span>
+  </div>
   <p class="raccourcis" aria-hidden="true">1 supportée · 2 non supportée · 3 ambiguë · S passer · ← → naviguer</p>
   <p class="erreur" id="item-erreur" hidden></p>
 </section>
@@ -119,6 +125,11 @@
   <p class="intro" id="fin-resume"></p>
   <p class="note">Vos réponses sont enregistrées. Vous pouvez les modifier en revenant dans la
     campagne : la dernière valeur enregistrée est celle qui compte.</p>
+  <div class="bas">
+    <button class="btn lien" id="btn-export-avis-fin" type="button">Télécharger mes avis — CSV</button>
+    <span class="note" id="export-session-fin"></span>
+  </div>
+  <p class="erreur" id="fin-erreur" hidden></p>
   <button class="btn majeure" id="btn-retour-liste">Retour aux campagnes</button>
 </section>
 
@@ -131,6 +142,6 @@
 <script src="./a2med_contract.js?v=a77957cf"></script>
 <script src="./a2med_evidence_view.js?v=91acf731"></script>
 <script src="./a2med_document_view.js?v=76162acd"></script>
-<script src="./expert.js?v=04fdbf6d"></script>
+<script src="./expert.js?v=9c30f663"></script>
 </body>
 </html>
