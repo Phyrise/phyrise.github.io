@@ -233,7 +233,11 @@ const A2MEDDocumentView = (() => {
         if (!pageStatus) {
           state.textContent = unlocated; loaded = true; return;
         }
-        if (options.compact) location.textContent = ' · ' + caption(pageStatus);
+        if (options.compact) {
+          location.textContent = pageStatus.source_type === 'pptx' && Number.isInteger(pageStatus.slide_1based)
+            ? ' · diapo ' + pageStatus.slide_1based : ' · page PDF ' + physicalPage(pageStatus);
+          summary.title = caption(pageStatus);
+        }
         state.textContent = caption(pageStatus) + ' · Chargement de l’aperçu…';
         const response = await checked(fetcher, path('page'), 'image/png', 'page');
         const blob = await response.blob();
