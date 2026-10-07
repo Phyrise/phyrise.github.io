@@ -274,7 +274,7 @@ function renderAnswer(data) {
   if (data.source_only) {
     $('answerCard').dataset.status = 'SOURCES_ONLY';
     $('statusCode').textContent = 'SOURCES';
-    $('statusMeaning').textContent = corpusLabel(data);
+    $('statusMeaning').textContent = data.guided ? '' : corpusLabel(data);
     $('answerTime').textContent = `Recherche${total}${sourceCount(data)}`;
     renderProvisional(data);
     $('answer').innerHTML = '<p>Les passages ci-dessous sont les cinq résultats du retrieval. '
@@ -288,7 +288,7 @@ function renderAnswer(data) {
   const [label, meaning] = STATUS[code];
   $('answerCard').dataset.status = code;
   $('statusCode').textContent = label;
-  $('statusMeaning').textContent = corpusLabel(data);
+  $('statusMeaning').textContent = data.guided ? '' : corpusLabel(data);
   $('answerTime').textContent = `Réponse${total}${sourceCount(data)}`;
   /* Le modèle QUI A PARLÉ, lu dans la décharge du résultat (`technique.gen_model`), jamais
      déduit du sélecteur : si ce nom ne correspond pas à la sélection, la divergence est
@@ -296,7 +296,7 @@ function renderAnswer(data) {
   const ligne = $('answerModel');
   if (ligne) {
     const servi = (data.technique || {}).gen_model;
-    ligne.hidden = !servi;
+    ligne.hidden = !servi || !!data.guided;
     ligne.textContent = servi ? `modèle servi : ${servi}` : '';
     ligne.title = 'Nom signalé par le moteur dans la décharge du résultat';
   }
@@ -466,7 +466,8 @@ function renderSources(data) {
   $('sourcesNote').hidden = !data.source_only || !src.length;
   const times = data.timings || {};
   const measured = [];
-  if (Number.isFinite(times.retrieval_s)) measured.push(`Recherche : ${times.retrieval_s.toFixed(2)} s`);
+  if (data.reuse_context) measured.push('Passages conservés');
+  else if (Number.isFinite(times.retrieval_s)) measured.push(`Recherche : ${times.retrieval_s.toFixed(2)} s`);
   if (!data.source_only && Number.isFinite(times.generation_s)) measured.push(`Rédaction : ${times.generation_s.toFixed(1)} s`);
   $('resultTiming').textContent = measured.join(' · ');
   $('resultTiming').hidden = !measured.length;
@@ -514,6 +515,7 @@ function installerVuesDocument(racine) {
   }
   emplacements.forEach((e) => {
     V.creer(API_BASE, { document: e.dataset.doc, page: e.dataset.page }, {
+      compact: true,
       apiFetch: (path, init) => apiFetch(path, { ...init, preserveDocumentView: true })
     })
       .then((bloc) => {

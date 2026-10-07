@@ -504,3 +504,11 @@ dialog.doc-agrandissement::backdrop { background: rgba(18,18,22,.94); }
   .guided-choices { grid-template-columns: minmax(0, 1fr); }
   .guided-number { align-items: stretch; }
 }
+
+/* The existing compact original-document viewer, also in Consultation. */
+.doc-compact .doc-resume { flex-wrap:wrap; gap:.2rem; font-size:.86rem; }
+.doc-compact .doc-location { color:var(--ink-2); font-size:.8rem; font-weight:400; }
+.doc-compact .doc-pdf-link { background:transparent; border:0; border-radius:0;
+  padding:4px 0; min-height:44px; color:var(--accent-dark); text-decoration:underline;
+  text-underline-offset:3px; font-size:.85rem; }
+.doc-compact .doc-contenu { margin-top:0; }

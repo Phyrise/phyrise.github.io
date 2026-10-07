@@ -9,7 +9,7 @@
   if (!toggle || !form) return;
   let supported = false, busy = false, trace = null, turn2Used = false;
   let seq = 0, raw = "", previewQuestions = [], saved = null, invalid = false;
-  let decoder = null, draftItems = [], capabilityPromise = null, capabilityLoaded = false;
+  let decoder = null, draftItems = [], capabilityPromise = null, capabilityLoaded = false, capabilityChecked = false;
   let turn2Active = false;
   const hintDefault = "Expérimental : demande une précision si nécessaire.";
   const session = () => { try { return sessionStorage.getItem(SESSION); } catch { return null; } };
@@ -51,7 +51,7 @@
     const normalBusy = !!$("askBtn")?.disabled && !busy;
     toggle.disabled = !supported || sourcesOnly || busy || normalBusy;
     $("guidedHint").textContent = !supported
-      ? "Guidé expérimental — indisponible sur ce service."
+      ? (capabilityChecked ? "Guidé expérimental — indisponible sur ce service." : "Vérification du guidage…")
       : sourcesOnly ? "Guidé expérimental — choisissez un mode avec génération."
       : toggle.checked ? "Expérimental · Flash · réponse standard."
       : hintDefault;
@@ -89,7 +89,7 @@
         supported = r.ok && (await r.json()).guided_consult === true;
         capabilityLoaded = r.ok;
       } catch { supported = false; }
-      controls();
+      capabilityChecked = true; controls();
     })();
     try { await capabilityPromise; } finally { capabilityPromise = null; }
   }
@@ -217,7 +217,7 @@
         obsolete_excluded_stems:out.obsolete_excluded_stems || ["non communiqué"],
         sampling:generator.sampling || {temperature:0,max_tokens:2000,enable_thinking:false}
       },
-      stream_stats:out.stream_stats || null, guided:true, trace_id:out.trace_id };
+      reuse_context:out.reuse_mode === "A", stream_stats:out.stream_stats || null, guided:true, trace_id:out.trace_id };
   }
   function why(field, c, sources) {
     const ranks = new Set((c.evidence || []).map(x => parseInt(String(x).replace(/\D/g,""),10)));
@@ -304,7 +304,7 @@
     $("guidedContinue").disabled=true; $("askBtn").disabled=true;
     $("guidedFields").querySelectorAll("input").forEach(el=>{el.disabled=true;});
     controls();
-    $("error").hidden=true; window.startProgress?.("standard"); $("progressLead").textContent="Réponse à partir des précisions et des preuves";
+    $("error").hidden=true; window.startProgress?.("standard",true); $("progressLead").textContent="Réponse à partir des précisions et des preuves";
     try {
       const out=await stream("/api/consult-guided/turn2/stream",{trace_id:trace,answers:ans.values,mode:"A"},id);
       if(id!==seq||!out)return; completed=true; trace=null;
@@ -361,7 +361,7 @@
         $("statusCode").textContent="Précisions nécessaires";
         const elapsed = out.timings && Number.isFinite(out.timings.t_total_s)
           ? " · " + out.timings.t_total_s.toFixed(1) + " s" : "";
-        $("answerTime").textContent="Précisions guidées"+elapsed;
+        $("answerTime").textContent=elapsed.replace(/^ · /, "");
         $("sourcesTitle").textContent="Sources examinées pour les précisions ("+(out.sources||[]).length+")";
         $("answer").textContent=""; $("limits").hidden=true; $("copyAllBtn").hidden=true;
         window.say?.("Choisissez une réponse ou « Inconnu », puis continuez.");
