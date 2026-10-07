@@ -6,6 +6,7 @@
 <title>Retour expert — A²-Med</title>
 <meta name="description" content="Donner un avis médical sur une affirmation et les passages cités. Une page, une décision.">
 <link rel="stylesheet" href="./expert.css?v=3854fcc4">
+<link rel="stylesheet" href="./navigation.css?v=52e55b0f">
 </head>
 <body data-api="https://panels-hearing-cbs-even.trycloudflare.com">
 
@@ -16,6 +17,11 @@
     <span id="compteur">— / —</span>
     <span class="piste" aria-hidden="true"><span class="remplissage" id="remplissage"></span></span>
   </span>
+  <nav class="a2-navigation" aria-label="Sections">
+    <a href="./index.html">Consultation</a>
+    <a href="./guided.html">Guidé</a>
+    <a href="./expert.html" aria-current="page">Validation</a>
+  </nav>
   <nav class="navigation-haute" id="navigation-haute" aria-label="Navigation des affirmations" hidden>
     <button type="button" class="btn lien" id="btn-precedent-haut" title="Item précédent">← Précédent</button>
     <button type="button" class="btn lien" id="btn-suivant-haut" title="Changer d’item sans enregistrer de verdict">Suivant →</button>
@@ -125,6 +131,6 @@
 <script src="./a2med_contract.js?v=a77957cf"></script>
 <script src="./a2med_evidence_view.js?v=91acf731"></script>
 <script src="./a2med_document_view.js?v=26487515"></script>
-<script src="./expert.js?v=de01649b"></script>
+<script src="./expert.js?v=04fdbf6d"></script>
 </body>
 </html>

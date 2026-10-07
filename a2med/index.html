@@ -6,6 +6,7 @@
 <title>A²-Med — réponses médicales sourcées</title>
 <meta name="description" content="Question médicale, réponse française citée, extraite des recommandations SpILF locales.">
 <link rel="stylesheet" href="./style.css?v=129cb50e">
+<link rel="stylesheet" href="./navigation.css?v=52e55b0f">
 </head>
 <body data-api="https://mel-mandate-carter-erik.trycloudflare.com">
 <div id="passwordGate" class="password-gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
@@ -32,7 +33,11 @@
       <span id="healthText">vérification du service…</span>
       <button type="button" class="state-retry" id="healthRefresh" hidden>ré-essayer</button>
     </p>
-    <a class="mode-link mode-link-eval" href="./eval">Eval &amp; Lab</a>
+    <nav class="a2-navigation" aria-label="Sections">
+      <a href="./index.html" aria-current="page">Consultation</a>
+      <a href="./guided.html">Guidé</a>
+      <a href="./expert.html">Validation</a>
+    </nav>
   </div>
 </header>
 
@@ -144,14 +149,15 @@
 <footer class="wrap site-foot">
   <p class="fine mono" id="fingerprint"></p>
   <!-- Entrée discrète de la revue expert (§6) : un outil du laboratoire, pas une fonction clinique. -->
-  <p class="fine"><a class="fine" href="./expert">Retour expert</a> — donner un avis sur une
+  <p class="fine"><a class="fine" href="./expert.html">Validation des preuves</a> — donner un avis sur une
      affirmation et les passages cités, 5 à 25 minutes.</p>
+  <details><summary>Outils techniques</summary><p><a href="./eval.html">Laboratoire et benchmarks</a></p></details>
 </footer>
 
 <script src="./a2med_contract.js?v=a77957cf"></script>
 <script src="./a2med_stream_view.js?v=6c725126"></script>
 <script src="./a2med_evidence_view.js?v=91acf731"></script>
 <script src="./a2med_document_view.js?v=26487515"></script>
-<script src="./app.js?v=ca0c2c6f"></script>
+<script src="./app.js?v=bed5aec0"></script>
 </body>
 </html>

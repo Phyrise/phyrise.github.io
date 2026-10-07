@@ -1,11 +1,12 @@
 const API_BASE = String(document.body.dataset.api || window.A2MED_API_BASE || "")
   .replace(/\/$/, "");
+const PROXY_SESSION_KEY = "a2med_proxy_session:" + (API_BASE || window.location.origin);
 const apiFetch = (path, init = {}) => {
   const { preserveDocumentView, ...requestInit } = init;
   const headers = new Headers(init.headers || {});
   // Session proxy par en-tête (mobile : cookies tiers cross-site bloqués) ; le cookie
   // continue de marcher en parallèle sur les navigateurs qui l'autorisent.
-  const session = sessionStorage.getItem("a2med_proxy_session");
+  const session = sessionStorage.getItem(PROXY_SESSION_KEY);
   if (session) headers.set("X-A2Med-Session", session);
   return fetch(API_BASE + path, { ...requestInit, headers, credentials: "include" })
     .catch((e) => { throw window.A2MEDContract.networkError(API_BASE, e); })
@@ -14,7 +15,7 @@ const apiFetch = (path, init = {}) => {
       // token éphémère) → re-passer par le gate. 401 sans session = normal
       // (le gate est encore visible) : on ne reload pas.
       if (!preserveDocumentView && response.status === 401 && sessionStorage.getItem("a2med_test_unlocked") === "1") {
-        sessionStorage.removeItem("a2med_proxy_session");
+        sessionStorage.removeItem(PROXY_SESSION_KEY);
         sessionStorage.removeItem("a2med_test_unlocked");
         location.reload();
       }
@@ -67,7 +68,7 @@ async function unlock() {
     passwordInput.focus();
     return;
   }
-  if (payload.session) sessionStorage.setItem("a2med_proxy_session", payload.session);
+  if (payload.session) sessionStorage.setItem(PROXY_SESSION_KEY, payload.session);
   sessionStorage.setItem("a2med_test_unlocked", "1");
   gate.remove();
   demarrerApresAuthentification();                       // santé + contrat, maintenant qu'on est autorisé

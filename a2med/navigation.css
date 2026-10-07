@@ -1,0 +1,11 @@
+/* Same three destinations on every clinician-facing page. */
+.a2-navigation{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-left:auto}
+.a2-navigation a{display:flex;align-items:center;justify-content:center;min-height:44px;
+  padding:8px 12px;border-radius:8px;color:#485765;text-decoration:none;font:600 14px/1.3 system-ui,sans-serif}
+.a2-navigation a:hover{background:#eaf0f4}
+.a2-navigation a[aria-current=page]{background:#e5f1ee;color:#075447}
+.a2-navigation a:focus-visible{outline:3px solid #1258a6;outline-offset:2px}
+.barre{flex-wrap:wrap}.barre .a2-navigation{order:2}.barre .navigation-haute{order:3}
+@media(max-width:600px){.a2-navigation{width:100%;margin:4px 0 0;justify-content:center}
+  .a2-navigation a{flex:1;padding:8px 5px}.mast-top{flex-wrap:wrap}
+  .barre .a2-navigation{border-top:1px solid #dfe4ea;padding-top:4px}}

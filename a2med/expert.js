@@ -9,6 +9,7 @@
 (function () {
   "use strict";
   const API_BASE = String(document.body.dataset.api || window.A2MED_API_BASE || "").replace(/\/$/, "");
+const PROXY_SESSION_KEY = "a2med_proxy_session:" + (API_BASE || window.location.origin);
   const $ = (id) => document.getElementById(id);
   const C = window.A2MEDContract;
   const problem = C && C.apiBaseProblem ? C.apiBaseProblem(API_BASE) : null;
@@ -72,7 +73,7 @@
   // Shared authenticated transport also serves original page images and PDFs.
   function documentFetch(path, options = {}) {
     const headers = new Headers(options.headers || {});
-    const session = sessionStorage.getItem("a2med_proxy_session");
+    const session = sessionStorage.getItem(PROXY_SESSION_KEY);
     if (session) headers.set("X-A2Med-Session", session);
     return fetch(API_BASE + path, { ...options, headers, credentials: "include" });
   }
@@ -93,7 +94,7 @@
       throw (C && C.networkError) ? C.networkError(API_BASE, e) : e;
     }
     if (response.status === 401) {              // le gate est ici, pas une redirection qui perd l'écran
-      sessionStorage.removeItem("a2med_proxy_session");
+      sessionStorage.removeItem(PROXY_SESSION_KEY);
       const err = new Error("Authentification requise"); err.code = "auth"; err.http = 401;
       throw err;
     }
@@ -176,7 +177,7 @@
     } catch (e) { return "Service injoignable — le tunnel est peut-être éteint."; }
     if (!r.ok) return "Mot de passe refusé.";
     const d = await r.json().catch(() => null);
-    if (d && d.session) sessionStorage.setItem("a2med_proxy_session", d.session);
+    if (d && d.session) sessionStorage.setItem(PROXY_SESSION_KEY, d.session);
     return null;
   }
   $("valider-mdp").addEventListener("click", async () => {

@@ -51,3 +51,13 @@
 .g-bloc{background:#f6f8fa;border:1px dashed #b9c8d6;padding:.6rem;font-size:.88rem;white-space:pre-wrap;
   word-break:break-word;overflow-wrap:anywhere}
 .g-hidden{display:none}
+.g-wrap h1{font-size:1.65rem;margin:.4rem 0}.g-intro{color:#485765;margin:.4rem 0 1rem;line-height:1.6}
+.g-experimental{margin:0 0 1rem;border-left:3px solid #c99700;padding:.2rem .75rem;background:#fff9e9;border-radius:.5rem}
+.g-experimental summary,.g-advanced summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600;font-size:.9rem}
+.g-experimental p{font-size:.9rem;line-height:1.6;margin:.3rem 0 .7rem}
+#gMdp{display:block;width:100%;min-height:48px;font:inherit;font-size:16px;padding:.6rem;border:1px solid #b9c4cf;border-radius:.55rem}
+.g-card[aria-busy=true]{border-color:#1258a6}.g-advanced{margin-top:1rem}
+.g-src{overflow-wrap:anywhere}.g-src>p{font-size:.88rem;color:#5e6b79}
+.g-source-text>summary,.g-src>summary{min-height:44px;display:flex;align-items:center;cursor:pointer}
+.g-source-text{margin-bottom:.4rem}.g-documents{margin-top:1rem}
+@media(max-width:600px){.g-wrap{padding-top:.8rem}.g-card{padding:.9rem}#gq{font-size:16px}}
