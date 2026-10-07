@@ -22,6 +22,7 @@ const apiFetch = (path, init = {}) => {
       return response;
     });
 };
+window.apiFetch = apiFetch; // shared same-origin/session-aware helper for the embedded guided feature
 const gate = document.getElementById("passwordGate");
 const passwordForm = document.getElementById("passwordForm");
 const passwordInput = document.getElementById("sitePassword");
@@ -972,11 +973,11 @@ $('q').addEventListener('compositionend', () => { enComposition = false; });
 $('q').setAttribute('enterkeyhint', TACTILE ? 'enter' : 'send');
 $('q').addEventListener('keydown', (e) => {
   if (e.key !== 'Enter' || enComposition || e.isComposing) return;
-  if (e.metaKey || e.ctrlKey || e.altKey) { e.preventDefault(); ask(); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey) { e.preventDefault(); $('askForm').requestSubmit(); return; }
   if (e.shiftKey) return;                                 // saut de ligne voulu
   if (TACTILE) return;                                    // envoi par le bouton, pas par Entrée
   const v = e.target.value;
-  if (!v.includes('\n') && v.trim()) { e.preventDefault(); ask(); }
+  if (!v.includes('\n') && v.trim()) { e.preventDefault(); $('askForm').requestSubmit(); }
 });
 document.querySelectorAll('.chip').forEach((c) => {
   c.onclick = () => { $('q').value = c.dataset.q; $('q').focus(); countChars(); };

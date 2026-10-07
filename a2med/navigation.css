@@ -1,4 +1,4 @@
-/* Same three destinations on every clinician-facing page. */
+/* Consultation and Validation on clinician-facing pages. */
 .a2-navigation{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-left:auto}
 .a2-navigation a{display:flex;align-items:center;justify-content:center;min-height:44px;
   padding:8px 12px;border-radius:8px;color:#485765;text-decoration:none;font:600 14px/1.3 system-ui,sans-serif}

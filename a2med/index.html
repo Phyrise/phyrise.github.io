@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>A²-Med — réponses médicales sourcées</title>
 <meta name="description" content="Question médicale, réponse française citée, extraite des recommandations SpILF locales.">
-<link rel="stylesheet" href="./style.css?v=5b37f596">
-<link rel="stylesheet" href="./navigation.css?v=52e55b0f">
+<link rel="stylesheet" href="./style.css?v=b5c0b4d0">
+<link rel="stylesheet" href="./navigation.css?v=5fa1e0d8">
 </head>
 <body data-api="https://mel-mandate-carter-erik.trycloudflare.com">
 <div id="passwordGate" class="password-gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
@@ -34,9 +34,8 @@
       <button type="button" class="state-retry" id="healthRefresh" hidden>ré-essayer</button>
     </p>
     <nav class="a2-navigation" aria-label="Sections">
-      <a href="./index.html?v=guided-compact-20261007" aria-current="page">Consultation</a>
-      <a href="./guided.html?v=guided-compact-20261007">Guidé</a>
-      <a href="./expert.html?v=guided-compact-20261007">Validation</a>
+      <a href="./index.html?v=consult-guided-20261008" aria-current="page">Consultation</a>
+      <a href="./expert.html?v=consult-guided-20261008">Validation</a>
     </nav>
   </div>
 </header>
@@ -57,7 +56,6 @@
     <!-- Le praticien veut une reponse, pas une console : mode et modele sont prereglés
          (réponse courte, 9B) et repliés sous « Options ». Les valeurs envoyees au service
          sont exactement les memes qu'avant — seul l'affichage change. -->
-    <p class="fine preset" id="presetLine">Réponse courte · modèle en titre</p>
     <details class="options" id="optionsBox">
       <summary id="optionsSummary">Options ▸ réponse courte</summary>
       <fieldset class="mode-picker" aria-describedby="modeHint">
@@ -75,6 +73,11 @@
         <p class="fine" id="modelHint">Même retrieval ; seule la génératrice change.</p>
       </fieldset>
     </details>
+    <label class="guided-toggle" for="guidedEnabled">
+      <input id="guidedEnabled" type="checkbox" aria-describedby="guidedHint">
+      <span>Activer le mode guidé</span>
+    </label>
+    <p class="fine guided-hint" id="guidedHint">Expérimental : demande une précision si nécessaire.</p>
     <div class="btn-row">
       <button type="submit" class="btn primary" id="askBtn">Obtenir une réponse</button>
     </div>
@@ -105,6 +108,14 @@
         <span class="answer-model mono" id="answerModel" hidden></span>
       </header>
       <p class="provisional-banner" id="provisionalBanner" hidden></p>
+      <section class="guided-panel" id="guidedPanel" aria-labelledby="guidedTitle" hidden>
+        <h2 class="sr-only" id="guidedTitle">Précision nécessaire</h2>
+        <div id="guidedFields"></div>
+        <div class="btn-row">
+          <button class="btn primary" id="guidedContinue" type="button">Continuer</button>
+        </div>
+        <p class="notice" id="guidedError" role="alert" hidden></p>
+      </section>
       <!-- UNE SEULE CARTE : le texte en rédaction vit ici, au même endroit, et y est remplacé
            par la réponse validée. `done` reste la seule autorité du résultat. -->
       <div class="drafting" id="drafting" hidden>
@@ -148,16 +159,13 @@
 
 <footer class="wrap site-foot">
   <p class="fine mono" id="fingerprint"></p>
-  <!-- Entrée discrète de la revue expert (§6) : un outil du laboratoire, pas une fonction clinique. -->
-  <p class="fine"><a class="fine" href="./expert.html">Validation des preuves</a> — donner un avis sur une
-     affirmation et les passages cités, 5 à 25 minutes.</p>
-  <details><summary>Outils techniques</summary><p><a href="./eval.html">Laboratoire et benchmarks</a></p></details>
 </footer>
 
 <script src="./a2med_contract.js?v=a77957cf"></script>
 <script src="./a2med_stream_view.js?v=6c725126"></script>
 <script src="./a2med_evidence_view.js?v=91acf731"></script>
 <script src="./a2med_document_view.js?v=76162acd"></script>
-<script src="./app.js?v=bed5aec0"></script>
+<script src="./app.js?v=22617f0b"></script>
+<script src="./a2med_consult_guided.js?v=211ed50b"></script>
 </body>
 </html>
