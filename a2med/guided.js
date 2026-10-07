@@ -106,17 +106,25 @@ function badge(node, status) {
 /* Sources : citations lues du registre (doc + page + extrait brut, aucun nettoyage modèle). */
 function renderSources(hote, sources) {
   if (!sources || !sources.length) return;
-  const box = el("div");
-  box.append(el("p", "g-fine", "Sources"));
-  sources.forEach((s) => {
-    const d = el("section", "g-src");
-    d.append(el("p", null, `${s.ref} · ${s.document} · repère du registre ${s.page}`));
-    if (window.A2MEDDocumentView) d.append(window.A2MEDDocumentView.monter(API,
-      { document: s.document, page: s.page }, { apiFetch }));
+  const groups = new Map();
+  sources.forEach(source => {
+    const key = JSON.stringify([source.document, source.page]);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(source);
+  });
+  const box = el("div", "g-documents");
+  groups.forEach(group => {
+    const first = group[0], card = el("section", "g-src");
+    card.append(el("p", "g-source-name", `${group.map(s => s.ref).join(", ")} · ${first.document}`));
+    if (window.A2MEDDocumentView) card.append(window.A2MEDDocumentView.monter(API,
+      {document:first.document, page:first.page}, {apiFetch, compact:true}));
     const text = el("details", "g-source-text");
-    text.append(el("summary", null, "Texte extrait de la preuve"), el("p", "g-quote", s.excerpt));
-    d.append(text);
-    box.append(d);
+    text.append(el("summary", null, "Texte extrait de la preuve"));
+    group.forEach(source => {
+      if (group.length > 1) text.append(el("p", "g-fine", source.ref));
+      text.append(el("p", "g-quote", source.excerpt));
+    });
+    card.append(text); box.append(card);
   });
   hote.append(box);
 }
@@ -145,13 +153,13 @@ function preuvePourquoi(sources, evidence) {
   const d = el("details", "g-why");
   d.append(el("summary", null, "Pourquoi ?"));
   const wrap = el("div");
-  (evidence || []).forEach((alias) => {
+  const matches = [];
+  (evidence || []).forEach(alias => {
     const n = parseInt(String(alias).replace(/\D/g, ""), 10);
-    const s = (sources || []).find((x) => x.retrieval_rank === n);
-    wrap.append(el("p", "g-fine", s ? `Source de cette question : ${s.document}, repère ${s.page}`
-                                    : `Source de cette question : ${alias}`));
-    if (s) renderSources(wrap, [s]);
+    const source = (sources || []).find(s => s.retrieval_rank === n);
+    if (source) matches.push(source);
   });
+  renderSources(wrap, matches);
   d.append(wrap);
   return d;
 }
@@ -264,7 +272,7 @@ async function tour2(mode, bouton) {
     $("gFinal").classList.remove("g-hidden");
     $("gClar").classList.add("g-hidden");
     $("gOut").classList.add("g-hidden");
-    $("gProg").textContent = `Réponse prête · recherche ${out.timings.retrieval_s} s · rédaction ${out.timings.generation_s} s.`;
+    $("gProg").textContent = `Réponse prête · rédaction ${out.timings.generation_s} s.`;
     // jsdom (le selfcheck) n'implémente pas le défilement : on ne le simule pas ici.
     const cible = $("gFinal");
     if (typeof cible.scrollIntoView === "function") cible.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -299,9 +307,8 @@ $("gForm").addEventListener("submit", async (ev) => {
     badge($("gBadge"), out.status);
     $("gOut").classList.remove("g-hidden");
     if (out.status === "CLARIFICATION" && (out.clarifications || []).length) {
+      $("gOut").classList.add("g-hidden");
       $("gBody").textContent = "";
-      $("gBody").append(el("p", "g-fine",
-        "Les passages décrivent plusieurs conduites selon une information absente de la question."));
       afficherClarifications(out);
       $("gClar").scrollIntoView?.({ behavior: "smooth", block: "start" });
     } else {

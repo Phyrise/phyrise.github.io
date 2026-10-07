@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>A²-Med — Consultation guidée</title>
 <meta name="description" content="Réponse adaptée avec quelques précisions si nécessaire — prototype d'expérience, hors production.">
-<link rel="stylesheet" href="./style.css?v=129cb50e">
-<link rel="stylesheet" href="./guided.css?v=dba761d3">
+<link rel="stylesheet" href="./style.css?v=5b37f596">
+<link rel="stylesheet" href="./guided.css?v=5303c9a4">
 <link rel="stylesheet" href="./navigation.css?v=52e55b0f">
 </head>
 <body data-api="https://spotlight-eval-differ-tions.trycloudflare.com">
@@ -17,9 +17,9 @@
       <span id="healthText">vérification du service…</span>
       <button id="gHealthRetry" type="button" class="state-retry" hidden>Réessayer la connexion</button></p>
     <nav class="a2-navigation" aria-label="Sections">
-      <a href="./index.html?v=guided-ui-20261007">Consultation</a>
-      <a href="./guided.html?v=guided-ui-20261007" aria-current="page">Guidé</a>
-      <a href="./expert.html?v=guided-ui-20261007">Validation</a>
+      <a href="./index.html?v=guided-compact-20261007">Consultation</a>
+      <a href="./guided.html?v=guided-compact-20261007" aria-current="page">Guidé</a>
+      <a href="./expert.html?v=guided-compact-20261007">Validation</a>
     </nav>
   </div>
 </header>
@@ -55,18 +55,16 @@
   </form>
 
   <section id="gOut" class="g-card g-hidden" aria-labelledby="gOutTitle">
-    <h2 id="gOutTitle">Résultat</h2>
+    <h2 id="gOutTitle" class="g-sr-only">Réponse</h2>
     <p><span class="g-status" id="gBadge">—</span></p>
     <div id="gBody"></div>
   </section>
 
   <form id="gClar" class="g-card g-hidden" aria-labelledby="gClarTitle">
-    <h2 id="gClarTitle">Précisions utiles</h2>
-    <p class="g-fine">Un clic suffit. « Inconnu » est toujours possible — le système ne bloque
-      pas. Déroulez « Pourquoi ? » pour lire le passage qui rend cette information décisive.</p>
+    <h2 id="gClarTitle" class="g-sr-only">Précision nécessaire</h2>
     <div id="gFields"></div>
     <div class="g-actions">
-      <button class="g-btn" id="gGo2" type="submit">Obtenir la réponse avec ces précisions</button>
+      <button class="g-btn" id="gGo2" type="submit">Continuer</button>
     </div>
     <details class="g-advanced">
       <summary>Options techniques</summary>
@@ -78,7 +76,7 @@
   </form>
 
   <section id="gFinal" class="g-card g-hidden" aria-labelledby="gFinalTitle">
-    <h2 id="gFinalTitle">Réponse après précisions</h2>
+    <h2 id="gFinalTitle" class="g-sr-only">Réponse après précisions</h2>
     <details><summary>Précisions prises en compte</summary>
       <p class="g-fine">Informations déclarées, non vérifiées par les sources.</p>
       <pre class="g-bloc" id="gBloc"></pre>
@@ -88,7 +86,7 @@
   </section>
 </main>
 
-<script src="./a2med_document_view.js?v=26487515"></script>
-<script src="./guided.js?v=b691e25b"></script>
+<script src="./a2med_document_view.js?v=a083e3f7"></script>
+<script src="./guided.js?v=d4ffc3b0"></script>
 </body>
 </html>

@@ -61,3 +61,17 @@
 .g-source-text>summary,.g-src>summary{min-height:44px;display:flex;align-items:center;cursor:pointer}
 .g-source-text{margin-bottom:.4rem}.g-documents{margin-top:1rem}
 @media(max-width:600px){.g-wrap{padding-top:.8rem}.g-card{padding:.9rem}#gq{font-size:16px}}
+
+/* Compact clinician flow; evidence and patient conditions are retained in full. */
+.g-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.g-claim,.g-src{border-top:0}.g-claim{margin:.4rem 0;padding:.3rem 0;line-height:1.55}
+.g-src{padding:.3rem 0;margin:.5rem 0}.g-src .doc-vue{border-top:0;padding-top:0;margin:.15rem 0}
+.g-source-name{margin:0!important;font-size:.82rem!important;line-height:1.4}
+.g-source-text>summary::before,.g-why>summary::before{content:'▸';margin-right:.45rem;flex-shrink:0}
+.g-source-text[open]>summary::before,.g-why[open]>summary::before{content:'▾'}
+.g-source-text>summary{font-size:.85rem;font-weight:500;color:#53616c}
+.g-ref{margin-left:.22rem}.g-documents{margin-top:.75rem}
+.doc-compact .doc-resume{flex-wrap:wrap;gap:.2rem;font-size:.86rem}
+.doc-compact .doc-location{color:#53616c;font-size:.8rem;font-weight:400}
+.doc-compact .doc-pdf-link{background:transparent;border:0;border-radius:0;padding:4px 0;min-height:44px;color:#006b60;text-decoration:underline;text-underline-offset:3px;font-size:.85rem}
+.doc-compact .doc-contenu{margin-top:0}.doc-compact .doc-image{margin:0 0 .25rem}

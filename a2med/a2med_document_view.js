@@ -117,8 +117,10 @@ const A2MEDDocumentView = (() => {
   }
 
   function create(apiBase, source, options = {}) {
-    const node = el('details', 'doc-vue');
+    const node = el('details', options.compact ? 'doc-vue doc-compact' : 'doc-vue');
     const summary = el('summary', 'doc-resume', 'Voir le document original');
+    const location = el('span', 'doc-location');
+    if (options.compact) summary.append(location);
     const content = el('div', 'doc-contenu');
     const state = el('p', 'doc-etat'); state.setAttribute('role', 'status');
     node.append(summary, content); content.append(state);
@@ -160,7 +162,7 @@ const A2MEDDocumentView = (() => {
     };
     const addPdfButton = () => {
       if (pdfButton) return;
-      pdfButton = button('Ouvrir le PDF complet', 'doc-bouton');
+      pdfButton = button('Ouvrir le PDF complet', options.compact ? 'doc-bouton doc-pdf-link' : 'doc-bouton');
       let permanentFailure = false, downloadLink;
       pdfButton.addEventListener('click', async () => {
         if (disposed || authBlocked || pdfButton.disabled) return;
@@ -183,6 +185,7 @@ const A2MEDDocumentView = (() => {
               content.append(downloadLink);
             }
             downloadLink.href = target;
+            state.hidden = false;
             state.textContent = (pageStatus ? caption(pageStatus) : unlocated)
               + ' · Le navigateur a bloqué le nouvel onglet : utilisez le lien ci-dessous.';
           }
@@ -190,16 +193,17 @@ const A2MEDDocumentView = (() => {
           if (tab) tab.close();
           if (!disposed) {
             blockAuth(error); permanentFailure = !retryable(error);
+            state.hidden = false;
             state.textContent = authBlocked ? authMessage : explain(error);
           }
         } finally { pdfButton.disabled = disposed || authBlocked || permanentFailure; }
       });
       content.append(pdfButton);
-      if (options.expert) content.append(el('p', 'doc-aide', 'Le document apporte du contexte ; le verdict porte sur les passages cités.'));
+      if (options.expert && !options.compact) content.append(el('p', 'doc-aide', 'Le document apporte du contexte ; le verdict porte sur les passages cités.'));
     };
     const load = async () => {
       if (disposed || loaded || busy || authBlocked) return;
-      busy = true; retry.hidden = true; state.textContent = 'Chargement de la page originale…';
+      busy = true; retry.hidden = true; state.hidden = false; state.textContent = 'Chargement de la page originale…';
       try {
         if (!pdfInfo) {
           let info;
@@ -229,6 +233,7 @@ const A2MEDDocumentView = (() => {
         if (!pageStatus) {
           state.textContent = unlocated; loaded = true; return;
         }
+        if (options.compact) location.textContent = ' · ' + caption(pageStatus);
         state.textContent = caption(pageStatus) + ' · Chargement de l’aperçu…';
         const response = await checked(fetcher, path('page'), 'image/png', 'page');
         const blob = await response.blob();
@@ -236,6 +241,7 @@ const A2MEDDocumentView = (() => {
         const src = URL.createObjectURL(blob); urls.add(src);
         const label = caption(pageStatus);
         state.textContent = label;
+        state.hidden = Boolean(options.compact);
         const preview = button('', 'doc-agrandir');
         preview.setAttribute('aria-label', 'Agrandir : ' + label);
         const img = el('img', 'doc-image'); img.src = src; img.alt = label + ' · ' + doc;
@@ -246,15 +252,18 @@ const A2MEDDocumentView = (() => {
         img.addEventListener('error', () => {
           if (disposed) return;
           preview.remove(); hint.remove(); printed.remove();
+          state.hidden = false;
           URL.revokeObjectURL(src); urls.delete(src);
           state.textContent = authBlocked ? authMessage
             : label + ' · Aperçu indisponible. Le PDF complet reste disponible.';
         });
-        content.append(preview, printed, hint);
+        content.append(preview);
+        if (!options.compact) content.append(printed, hint);
         loaded = true;
       } catch (error) {
         if (!disposed) {
           blockAuth(error);
+          state.hidden = false;
           state.textContent = authBlocked ? authMessage : !pdfInfo ? explain(error)
             : caption(pageStatus) + ' · Aperçu indisponible. Le PDF complet reste disponible.';
           retry.hidden = !retryable(error) || authBlocked;
