@@ -1,0 +1,53 @@
+/* Guidé — page d'expérience (mission guided-clarification-001).
+   Mobile d'abord : 390 px est la cible, 360/430/desktop doivent tenir.
+   Les commandes font 44 px minimum : le praticien clique, il ne tape pas. */
+.g-wrap{max-width:36rem;margin:0 auto;padding:1rem .9rem calc(2rem + env(safe-area-inset-bottom))}
+/* Bandeau LAB : la page ne doit jamais se prendre pour le produit. */
+.g-lab{display:inline-block;margin:.2rem 0 0;padding:.35rem .7rem;border-radius:.5rem;
+  background:#fff4d6;border:1px solid #c99700;color:#5a4300;font-weight:700;font-size:.9rem}
+.g-card{border:1px solid #d9e0e7;border-radius:.9rem;background:#fff;padding:1rem;margin:0 0 1rem}
+.g-card h2{margin:0 0 .5rem;font-size:1.05rem}
+.g-fine{color:#5e6b79;font-size:.86rem;margin:.35rem 0 0}
+.g-status{display:inline-block;padding:.2rem .55rem;border-radius:999px;font-size:.8rem;font-weight:700;
+  background:#eef2f6;color:#2a3644}
+.g-status-CLARIFICATION{background:#fff4d6;color:#5a4300}
+.g-status-ANSWER{background:#e3f4e6;color:#155724}
+.g-status-CONDITIONAL_ANSWER{background:#e6eefc;color:#123f7a}
+.g-status-ABSTENTION{background:#f1eefc;color:#4b3f86}
+.g-progress{font-size:.9rem;color:#3a4753;margin:.5rem 0 0}
+.g-field{border:0;padding:0;margin:0 0 1.1rem}
+.g-field legend{font-weight:700;padding:0;margin:0 0 .45rem;font-size:1rem}
+.g-why{margin:.15rem 0 .5rem}
+.g-why summary{cursor:pointer;font-size:.84rem;color:#1b5e9c;padding:.25rem 0;min-height:44px;
+  display:flex;align-items:center}
+.g-why[open] summary{font-weight:600}
+/* Un seul style d'extrait : la citation s'identifie à sa marge bleue, à la marge rouge. */
+.g-quote{background:#f6f8fa;border-left:3px solid #1b5e9c;padding:.5rem .6rem;font-size:.85rem;
+  white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+.g-why .g-quote,.g-src .g-quote{margin:.3rem 0 .5rem}
+.g-opts{display:flex;flex-wrap:wrap;gap:.5rem}
+.g-opts label{flex:1 1 6.2rem;min-height:44px;display:flex;align-items:center;justify-content:center;
+  gap:.4rem;border:1px solid #b9c4cf;border-radius:.6rem;background:#fff;padding:.5rem .6rem;
+  font-size:.95rem;font-weight:600;text-align:center;cursor:pointer}
+.g-opts input{width:1.05rem;height:1.05rem;margin:0;flex:0 0 auto}
+.g-opts label:has(input:checked){border-color:#1258a6;background:#eaf2fb;box-shadow:0 0 0 2px #1258a6 inset}
+.g-opts label:has(input:focus-visible){outline:3px solid #1258a6;outline-offset:2px}
+.g-num{display:flex;align-items:flex-end;flex-wrap:wrap;gap:.5rem}
+.g-num input[type=text]{flex:1 1 7rem;min-height:44px;font:inherit;font-size:1.05rem;padding:.4rem .6rem;
+  border:1px solid #b9c4cf;border-radius:.6rem}
+.g-num span{font-size:.9rem;color:#3a4753;padding-bottom:.6rem}
+.g-num .g-unknown{flex:0 0 auto;min-width:5.6rem;min-height:44px}
+.g-actions{display:flex;flex-direction:column;gap:.6rem;margin-top:1rem}
+.g-btn{min-height:48px;font:inherit;font-weight:700;font-size:1rem;border-radius:.65rem;border:1px solid #1258a6;
+  background:#1258a6;color:#fff;cursor:pointer;padding:.6rem 1rem}
+.g-btn[disabled]{opacity:.55;cursor:progress}
+.g-btn-secondaire{background:#fff;color:#1258a6}
+.g-claim{border-top:1px solid #e3e9ef;padding:.6rem 0;font-size:.97rem}
+.g-claim:first-of-type{border-top:0}
+.g-ref{font-size:.8rem;font-weight:700;color:#1258a6;vertical-align:super}
+.g-list{margin:.4rem 0 0;padding-left:1.1rem;font-size:.93rem;color:#2a3644}
+.g-src{border-top:1px solid #e3e9ef;padding:.5rem 0}
+.g-src summary{cursor:pointer;font-size:.92rem;font-weight:600}
+.g-bloc{background:#f6f8fa;border:1px dashed #b9c8d6;padding:.6rem;font-size:.88rem;white-space:pre-wrap;
+  word-break:break-word;overflow-wrap:anywhere}
+.g-hidden{display:none}

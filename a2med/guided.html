@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A²-Med — Guidé (LAB)</title>
+<meta name="description" content="Réponse adaptée avec quelques précisions si nécessaire — prototype d'expérience, hors production.">
+<link rel="stylesheet" href="./style.css?v=129cb50e">
+<link rel="stylesheet" href="./guided.css?v=7907a709">
+</head>
+<body data-api="https://spotlight-eval-differ-tions.trycloudflare.com">
+<header class="masthead">
+  <div class="wrap mast-top">
+    <p class="brand">A²-Med</p>
+    <p class="state" id="health" role="status"><span class="state-dot" aria-hidden="true"></span>
+      <span id="healthText">vérification du service…</span></p>
+    <nav class="mast-nav" aria-label="Modes">
+      <a class="mode-link" href="./">Consultation</a>
+      <a class="mode-link" href="./guided" aria-current="page">Guidé</a>
+      <a class="mode-link" href="./expert">Expert</a>
+    </nav>
+  </div>
+</header>
+
+<main class="g-wrap">
+  <p class="g-lab" role="status">LAB — prototype expérimental · Guidé</p>
+  <p class="g-fine">Prototype expérimental. Les clarifications sont en cours d'évaluation.
+    Cette page ne remplace pas Consultation et n'est pas validée médicalement. Les questions
+    demandées viennent uniquement des passages récupérés, jamais de la mémoire du modèle.</p>
+
+  <form id="gAuth" class="g-card g-hidden" aria-labelledby="gAuthTitle">
+    <h2 id="gAuthTitle">Accès laboratoire</h2>
+    <label class="field-label" for="gMdp">Mot de passe</label>
+    <input id="gMdp" type="password" autocomplete="current-password" enterkeyhint="go">
+    <p class="g-fine" id="gAuthErr" role="alert"></p>
+    <div class="g-actions">
+      <button class="g-btn" id="gAuthGo" type="submit">Entrer</button>
+    </div>
+  </form>
+
+  <form id="gForm" class="g-card">
+    <label class="field-label" for="gq">Votre question</label>
+    <textarea id="gq" rows="4" maxlength="500" autocomplete="off" enterkeyhint="search"
+      aria-describedby="gqHint"></textarea>
+    <p class="g-fine" id="gqHint">Entrée : rechercher · Shift + Entrée : saut de ligne</p>
+    <div class="g-actions">
+      <button class="g-btn" id="gGo" type="submit">Rechercher</button>
+    </div>
+    <p class="g-progress" id="gProg" role="status" aria-live="polite"></p>
+  </form>
+
+  <section id="gOut" class="g-card g-hidden" aria-labelledby="gOutTitle">
+    <h2 id="gOutTitle">Résultat</h2>
+    <p><span class="g-status" id="gBadge">—</span></p>
+    <div id="gBody"></div>
+  </section>
+
+  <form id="gClar" class="g-card g-hidden" aria-labelledby="gClarTitle">
+    <h2 id="gClarTitle">Quelques précisions peuvent modifier la recommandation</h2>
+    <p class="g-fine">Un clic suffit. « Inconnu » est toujours possible — le système ne bloque
+      pas. Déroulez « Pourquoi ? » pour lire le passage qui rend cette information décisive.</p>
+    <div id="gFields"></div>
+    <div class="g-actions">
+      <button class="g-btn" id="gGo2" type="submit">Continuer</button>
+      <button class="g-btn g-btn-secondaire" id="gModeB" type="button"
+              title="Seconde récupération avec les précisions (comparaison de laboratoire)">
+        Répondre après nouvelle recherche</button>
+    </div>
+  </form>
+
+  <section id="gFinal" class="g-card g-hidden" aria-labelledby="gFinalTitle">
+    <h2 id="gFinalTitle">Réponse après précisions</h2>
+    <p class="g-fine">Informations prises en compte (déclaration du praticien, non vérifiée par
+      les sources) :</p>
+    <pre class="g-bloc" id="gBloc"></pre>
+    <p><span class="g-status" id="gBadge2">—</span></p>
+    <div id="gBody2"></div>
+  </section>
+</main>
+
+<script src="./guided.js?v=930b1c3e"></script>
+</body>
+</html>
