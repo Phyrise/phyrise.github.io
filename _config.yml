@@ -1,0 +1,2 @@
+# Inclut le dossier __/ (helper de connexion Firebase d’A² Home), ignoré sinon par Jekyll.
+include: ["__"]
