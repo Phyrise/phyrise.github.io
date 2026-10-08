@@ -37,10 +37,6 @@
     if (!saved) return;
     const m = document.querySelector('input[name="mode"][value="' + CSS.escape(saved.mode) + '"]');
     if (m) m.checked = true;
-    if (saved.model) {
-      const model = document.querySelector('input[name="model"][value="' + CSS.escape(saved.model) + '"]');
-      if (model) model.checked = true;
-    }
     saved = null;
     window.updateMode?.();
   }
@@ -53,12 +49,13 @@
     $("guidedHint").textContent = !supported
       ? (capabilityChecked ? "Guidé expérimental — indisponible sur ce service." : "Vérification du guidage…")
       : sourcesOnly ? "Guidé expérimental — choisissez un mode avec génération."
-      : toggle.checked ? "Expérimental · Flash · réponse standard."
+      : toggle.checked ? "Expérimental · réponse standard · modèle choisi dans Options."
       : hintDefault;
     document.querySelectorAll('input[name="mode"],input[name="model"]').forEach(el => {
       if (el.dataset.guidedBaseDisabled === undefined)
         el.dataset.guidedBaseDisabled = String(el.disabled);
-      el.disabled = (toggle.checked && supported) || normalBusy
+      el.disabled = (el.name === "mode" && toggle.checked && supported)
+        || (el.name === "model" && !!trace && !turn2Used && toggle.checked) || busy || normalBusy
         || el.dataset.guidedBaseDisabled === "true";
     });
   }
@@ -351,7 +348,7 @@
     $("tech").textContent=""; $("resultTiming").hidden=true;
     if ($("answerModel")) $("answerModel").hidden=true;
     try {
-      const out=await stream("/api/consult-guided/ask/stream",{question},id);
+      const out=await stream("/api/consult-guided/ask/stream",{question,model:document.querySelector('input[name="model"]:checked')?.value||"qwen9b"},id);
       if(id!==seq||!out)return;
       out.timings=out.timings||{};
       if(!Number.isFinite(out.timings.t_total_s))out.timings.t_total_s=(Date.now()-began)/1000;
@@ -383,9 +380,8 @@
   toggle.addEventListener("change",()=>{
     if(busy){toggle.checked=!toggle.checked;return;}
     if(toggle.checked) {
-      saved={mode:mode(),model:document.querySelector('input[name="model"]:checked')?.value||null};
+      saved={mode:mode()};
       const standard=document.querySelector('input[name="mode"][value="standard"]'); if(standard)standard.checked=true;
-      const flash=document.querySelector('input[name="model"][value="flash"]'); if(flash&&!flash.disabled)flash.checked=true;
       window.updateMode?.();
     } else restore();
     reset(); controls(); $("error").hidden=true;
