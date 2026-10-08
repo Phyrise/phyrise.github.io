@@ -11,7 +11,6 @@
   let seq = 0, raw = "", previewQuestions = [], saved = null, invalid = false;
   let decoder = null, draftItems = [], capabilityPromise = null, capabilityLoaded = false, capabilityChecked = false;
   let turn2Active = false;
-  const hintDefault = "Expérimental : demande une précision si nécessaire.";
   const session = () => { try { return sessionStorage.getItem(SESSION); } catch { return null; } };
   const isUnlocked = () => { try { return sessionStorage.getItem("a2med_test_unlocked") === "1"; } catch { return false; } };
   function resetPanel() {
@@ -21,7 +20,7 @@
       fields.textContent = "";
     }
     if ($("guidedPanel")) $("guidedPanel").hidden = true;
-    if ($("guidedContinue")) $("guidedContinue").disabled = true;
+    if ($("guidedContinue")) { $("guidedContinue").disabled = true; $("guidedContinue").hidden = true; }
     if ($("guidedError")) { $("guidedError").textContent = ""; $("guidedError").hidden = true; }
   }
   function reset() {
@@ -46,11 +45,10 @@
     if (sourcesOnly && toggle.checked) { toggle.checked = false; restore(); reset(); }
     const normalBusy = !!$("askBtn")?.disabled && !busy;
     toggle.disabled = !supported || sourcesOnly || busy || normalBusy;
-    $("guidedHint").textContent = !supported
-      ? (capabilityChecked ? "Guidé expérimental — indisponible sur ce service." : "Vérification du guidage…")
-      : sourcesOnly ? "Guidé expérimental — choisissez un mode avec génération."
-      : toggle.checked ? "Expérimental · réponse standard · modèle choisi dans Options."
-      : hintDefault;
+    const hint = $("guidedHint");
+    hint.textContent = !supported && capabilityChecked ? "Guidage indisponible sur ce service."
+      : sourcesOnly ? "Le guidage nécessite un mode avec réponse." : "";
+    hint.hidden = !hint.textContent;
     document.querySelectorAll('input[name="mode"],input[name="model"]').forEach(el => {
       if (el.dataset.guidedBaseDisabled === undefined)
         el.dataset.guidedBaseDisabled = String(el.disabled);
@@ -100,6 +98,9 @@
     });
     panel.hidden = !previewQuestions.length;
     $("guidedContinue").disabled = true;
+    $("guidedContinue").hidden = true;
+    $("drafting").hidden = !!previewQuestions.length;
+    $("answerCard").dataset.preview = previewQuestions.length ? "question" : (draftItems.length ? "answer" : "pending");
   }
   function textDelta(text) {
     const delta = String(text || "");
@@ -108,7 +109,7 @@
       if (decoded.textes.length) {
         if ($("answerCard").dataset.view !== "drafting") {
           window.setView?.("drafting");
-          $("draftFlag").textContent = "Analyse guidée en cours — éléments non vérifiés";
+          $("draftFlag").textContent = "Réponse en cours de préparation";
         }
         draftItems = draftItems.concat(decoded.textes);
         $("draftList").textContent = "";
@@ -130,6 +131,9 @@
       } catch { /* chaîne incomplète : ne rien afficher */ }
     }
     if (found.length) { previewQuestions = previewQuestions.concat(found).slice(0, 3); drawPreview(); }
+    $("answerCard").dataset.preview = previewQuestions.length ? "question" : (draftItems.length ? "answer" : "pending");
+    $("drafting").hidden = !!previewQuestions.length || !draftItems.length;
+    if (previewQuestions.length) $("progressLead").textContent = "Préparation des choix…";
   }
   function progress(name) {
     const steps = { retrieval:0, selection:1, rerank:1, generation:2, analysis:2,
@@ -137,17 +141,18 @@
     if (steps[name] !== undefined && window.setStep) window.setStep(steps[name]);
     const labels = { retrieval:"Recherche dans les recommandations", selection:"Sélection des passages",
       rerank:"Vérification de la pertinence",
-      generation:turn2Active ? "Rédaction de la réponse" : "Analyse guidée en cours",
-      analysis:"Analyse guidée en cours",
-      validation:turn2Active ? "Vérification des citations" : "Validation des questions et des preuves",
-      generation_terminee:turn2Active ? "Vérification des citations" : "Validation des questions et des preuves" };
+      generation:"Préparation de la réponse…",
+      analysis:"Préparation de la réponse…",
+      validation:turn2Active ? "Vérification des citations" : "Vérification des sources…",
+      generation_terminee:turn2Active ? "Vérification des citations" : "Vérification des sources…" };
     if (labels[name]) $("progressLead").textContent = labels[name];
     if ((name === "generation" || name === "analysis") && $("answerCard").dataset.view !== "drafting") {
       window.setView?.("drafting");
-      $("draftFlag").textContent = turn2Active ? "Rédaction en cours — non vérifiée"
-        : "Analyse guidée en cours — éléments non vérifiés";
+      $("draftFlag").textContent = turn2Active ? "Réponse en cours de préparation"
+        : "Réponse en cours de préparation";
     }
     if (name === "validation" || name === "generation_terminee") window.setView?.("checking");
+    $("drafting").hidden = !!previewQuestions.length || !draftItems.length;
   }
   async function stream(path, body, requestSeq) {
     const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 180000);
@@ -169,7 +174,7 @@
           else if (ev === "text_delta") {
             if ($("answerCard").dataset.view !== "drafting") {
               window.setView?.("drafting");
-              $("draftFlag").textContent = "Analyse guidée en cours — éléments non vérifiés";
+              $("draftFlag").textContent = "Réponse en cours de préparation";
             }
             textDelta(data.text);
           }
@@ -301,7 +306,11 @@
     $("guidedContinue").disabled=true; $("askBtn").disabled=true;
     $("guidedFields").querySelectorAll("input").forEach(el=>{el.disabled=true;});
     controls();
-    $("error").hidden=true; window.startProgress?.("standard",true); $("progressLead").textContent="Réponse à partir des précisions et des preuves";
+    $("error").hidden=true; window.startProgress?.("standard",true);
+    $("progress").dataset.guided="true"; $("progressNote").innerHTML='<span id="elapsed"></span>';
+    $("progressLead").textContent="Préparation de la réponse…";
+    $("guidedPanel").hidden=true; previewQuestions=[]; draftItems=[]; raw=""; if(decoder)decoder.reset();
+    $("answerCard").dataset.preview="pending";
     try {
       const out=await stream("/api/consult-guided/turn2/stream",{trace_id:trace,answers:ans.values,mode:"A"},id);
       if(id!==seq||!out)return; completed=true; trace=null;
@@ -315,6 +324,7 @@
         draftItems=[]; if(decoder)decoder.reset();
         $("draftList").textContent=""; $("draftMore").hidden=true;
         window.setView?.("result");
+        $("guidedPanel").hidden=false; $("answerCard").dataset.preview="result";
         fail(String(e.message||e));
       }
     }
@@ -331,15 +341,19 @@
     const fields=$("guidedFields"); fields.textContent=""; invalid=false;
     (out.clarifications||[]).slice(0,3).forEach((c,i)=>fields.append(makeClarification(c,i,out.sources||[])));
     $("guidedPanel").hidden=false;
+    $("guidedContinue").hidden=false;
     $("guidedContinue").disabled=invalid||!fields.querySelector("fieldset.guided-field");
     $("guidedContinue").onclick=()=>turn2(question);
   }
   async function askGuided(question) {
+    window.memoriseReglages?.();
     busy=true; $("askBtn").disabled=true; controls(); reset(); const id=seq;
+    $("answerCard").dataset.guided="true"; $("answerCard").dataset.preview="pending"; $("answerCard").dataset.status="";
     const began=Date.now();
     $("error").hidden=true; $("result").hidden=false; window.startProgress?.("standard");
-    $("progressLead").textContent="Recherche et analyse guidées";
-    $("progressNote").innerHTML='En attente du moteur. <span id="elapsed"></span>';
+    $("progress").dataset.guided="true";
+    $("progressLead").textContent="Recherche des recommandations…";
+    $("progressNote").innerHTML='<span id="elapsed"></span>';
     window.setView?.("search");
     $("answer").textContent=""; $("limits").textContent=""; $("limits").hidden=true;
     $("sourcesPanel").hidden=true; $("provisionalBanner").hidden=true;
@@ -348,7 +362,7 @@
     $("tech").textContent=""; $("resultTiming").hidden=true;
     if ($("answerModel")) $("answerModel").hidden=true;
     try {
-      const out=await stream("/api/consult-guided/ask/stream",{question,model:document.querySelector('input[name="model"]:checked')?.value||"qwen9b"},id);
+      const out=await stream("/api/consult-guided/ask/stream",{question,model:document.querySelector('input[name="model"]:checked')?.value||"qwen27b-shono"},id);
       if(id!==seq||!out)return;
       out.timings=out.timings||{};
       if(!Number.isFinite(out.timings.t_total_s))out.timings.t_total_s=(Date.now()-began)/1000;
@@ -393,7 +407,7 @@
     if (busy) { event.preventDefault(); event.stopImmediatePropagation(); return; }
     if ($("askBtn").disabled) return;
     reset();
-    if(!toggle.checked||mode()==="sources"||!supported)return;
+    if(!toggle.checked||mode()==="sources"||!supported){ $("answerCard").dataset.guided="false"; return; }
     event.preventDefault();event.stopImmediatePropagation();
     const q=$("q").value.trim();
     if (!q) { $("q").focus(); return; }

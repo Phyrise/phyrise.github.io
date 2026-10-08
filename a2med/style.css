@@ -512,3 +512,26 @@ dialog.doc-agrandissement::backdrop { background: rgba(18,18,22,.94); }
   padding:4px 0; min-height:44px; color:var(--accent-dark); text-decoration:underline;
   text-underline-offset:3px; font-size:.85rem; }
 .doc-compact .doc-contenu { margin-top:0; }
+
+/* Clinician iteration: compact controls, one calm Guided progress indicator. */
+.model-options { display:flex; flex-wrap:wrap; gap:6px; background:transparent; border:0; padding:0; }
+.model-options span { min-height:44px; padding:8px 14px; border:1px solid var(--line-2);
+  font-size:14px; font-weight:500; background:var(--paper); }
+.model-options .model-opt.off { display:none; }
+.model-picker { margin-top:12px; }
+.guided-toggle { margin-top:10px; border:0; padding:4px 0; }
+.guided-preview-question { padding:0; border:0; background:transparent; color:var(--ink);
+  font-weight:700; font-size:17px; line-height:1.5; }
+.guided-panel { margin:0; padding:0; border:0; }
+.progress[data-guided="true"] { display:flex; align-items:center; justify-content:space-between;
+  gap:8px; flex-wrap:wrap; padding:10px 14px; }
+.progress[data-guided="true"] .steps { display:none; }
+.progress[data-guided="true"] .progress-lead,
+.progress[data-guided="true"] #progressNote { margin:0; }
+#answerCard:is([data-view="search"],[data-view="drafting"],[data-view="checking"]) .answer-head { display:none; }
+#result[data-loading="true"] .tech { display:none; }
+#answerCard[data-guided="true"][data-preview="pending"]:is([data-view="search"],[data-view="drafting"],[data-view="checking"]) { display:none; }
+#answerCard[data-guided="true"] .drafting { padding:0; border:0; background:transparent; }
+#answerCard[data-guided="true"] .draft-flag { display:none; }
+#answerCard[data-status="CLARIFICATION"] { border:1px solid var(--line); }
+#answerCard[data-status="CLARIFICATION"] .answer-head { display:none; }

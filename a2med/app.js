@@ -107,6 +107,7 @@ const ETATS = {
 };
 const STREAM_NOTE = 'Rédaction de la réponse en cours… <span id="elapsed"></span>';
 const PREFS = 'a2med_ui_v1_prefs';
+const MODEL_DEFAULT_REVISION = 'shono27b-20261008';
 const PROVISIONAL = 'prepublication_recommendation';   // même valeur que tools/a2med_web.py
 const MAXQ_DEFAULT = 500;
 const BUSY_MSG = 'Une réponse est déjà en cours. Attendez sa fin avant d’envoyer '
@@ -555,6 +556,8 @@ function renderTech(data) {
 }
 
 function render(data) {
+  $("answerCard").dataset.guided = String(!!data.guided);
+  $("answerCard").dataset.preview = "result";
   const carte = $('answerCard');
   const topAvant = carte.isConnected ? carte.getBoundingClientRect().top : null;
   const suivait = lecteurEnBas;
@@ -607,11 +610,7 @@ function selectedMode() {
 }
 
 function selectedModel() {
-  // Sélecteur caché (pas d'options expérimentales configurées) : on n'envoie
-  // JAMAIS de champ model — le défaut du pipeline (flash) s'applique. La radio
-  // reste cochée côté DOM (valeur « flash ») mais n'a aucun effet tant que le
-  // sélecteur est masqué.
-  if (document.getElementById("modelPicker").hidden) return null;
+  // A sole available model can hide the picker without changing the sent generator.
   const v = document.querySelector('input[name="model"]:checked')?.value || null;
   return v === "flash" ? null : v;
 }
@@ -634,6 +633,7 @@ function tick() {
 
 function startProgress(mode = selectedMode(), reuse = false) {
   t0 = Date.now();
+  $('progress').dataset.guided = 'false';
   $('progress').hidden = false;
   $('progressLead').textContent = mode === 'sources' ? 'Recherche des sources en cours' : reuse ? 'Synthèse des sources conservées' : 'Calcul de la réponse en cours';
   [...$('steps').children].forEach((li, i) => {
@@ -661,6 +661,7 @@ function setView(vue) {
   const carte = $('answerCard');
   carte.dataset.view = VUES.includes(vue) ? vue : 'idle';
   const enCours = vue === 'search' || vue === 'drafting' || vue === 'checking';
+  $('result').dataset.loading = String(enCours);
   $('drafting').hidden = !enCours;
   if (enCours) $('draftFlag').textContent = ETATS[vue];
   if (!enCours) videApercu();
@@ -816,7 +817,7 @@ function showFailure(message, detail) {
 
 /* ------------------------------------------------------------ question */
 function memoriseReglages() {
-  SEC.set('local', PREFS, { mode: selectedMode(), model: (document.querySelector(
+  SEC.set('local', PREFS, { mode: selectedMode(), modelDefaultRevision: MODEL_DEFAULT_REVISION, model: (document.querySelector(
     'input[name="model"]:checked') || {}).value || null,
     options: $('optionsBox') ? $('optionsBox').open : false });
 }
@@ -1003,8 +1004,8 @@ function appliqueReglages() {
   if (!p) return;
   const mode = p.mode && document.querySelector(`input[name="mode"][value="${CSS.escape(p.mode)}"]`);
   if (mode) mode.checked = true;
-  if (p.options && $('optionsBox')) $('optionsBox').open = true;
-  prefsMode = p.model || null;                            // appliqué à l'arrivée de /api/capabilities
+  // Options starts closed; the main controls stay visible above it.
+  prefsMode = p.modelDefaultRevision === MODEL_DEFAULT_REVISION ? (p.model || null) : null;                            // appliqué à l'arrivée de /api/capabilities
   updateMode();
 }
 
@@ -1055,46 +1056,31 @@ initAppli();
 /* Contrat du service : modes, verdicts, et surtout la liste des génératrices QUI RÉPONDENT.
    Le sélecteur de modèle n'est plus écrit dans le HTML : un modèle qui ne répond pas ne peut
    pas être choisi (et aucun repli silencieux n'existe côté front). */
-function renderModelOptions(gens) {
+function renderModelOptions(gens, defaultKey = "qwen27b-shono") {
   const box = $('modelOptions');
   if (!box || !gens.length) return;
   modelLabels = {};
-  gens.forEach((g) => { modelLabels[g.key] = g.label; });
-  // Modèle par défaut annoncé au clinicien : le choix enregistré s'il répond, sinon le 9B
-  // (même règle que /eval), sinon la première génératrice qui répond — et ce repli est écrit
-  // sous le sélecteur, jamais laissé silencieux.
-  const live = gens.filter((g) => g.available);
-  const pref = ((live.find((g) => g.key === prefsMode)
-    || live.find((g) => g.key === 'qwen9b' && g.model_served !== false)
-    || live.find((g) => g.key === 'flash') || live[0] || {}).key) || '';
-  box.innerHTML = gens.map((g) => `<label class="model-opt${g.available ? '' : ' off'}">
-      <input type="radio" name="model" value="${g.key}" ${g.key === pref ? 'checked' : ''}
-        ${g.available ? '' : 'disabled'}>
-      <span>${g.label}<small>${g.experimental ? 'expérimental' : 'pipeline'}</small>
-        <small>${g.available ? 'sondé' : 'INDISPONIBLE — non sélectionnable'}</small>
-      </span></label>`).join('');
+  gens.forEach(g => { modelLabels[g.key] = g.label; });
+  const live = gens.filter(g => g.available && g.model_served !== false);
+  const recommended = live.find(g => g.key === defaultKey)
+    || live.find(g => g.key === 'qwen9b') || live.find(g => g.key === 'flash') || live[0];
+  const pref = (live.find(g => g.key === prefsMode) || recommended || {}).key || '';
+  const short = {flash:'Flash',qwen9b:'9B',qwen4b:'4B',qwen2b:'2B','qwen27b-shono':'27B · Shono'};
+  box.innerHTML = gens.map(g => {
+    const available = live.some(x => x.key === g.key);
+    return `<label class="model-opt${available ? '' : ' off'}" title="${esc(g.label)}">
+      <input type="radio" name="model" aria-label="${esc(g.label)}" value="${esc(g.key)}"
+        ${g.key === pref ? 'checked' : ''} ${available ? '' : 'disabled'}>
+      <span>${esc(short[g.key] || g.label)}</span></label>`;
+  }).join('');
   $('modelPicker').hidden = live.length < 2;
-  const checked = document.querySelector('input[name="model"]:checked');
-  let repli = null;
-  if (!checked || checked.disabled) {
-    const first = box.querySelector('input[name="model"]:not([disabled])');
-    if (first) { first.checked = true; repli = first.value; }
-  }
-  // Un modele par defaut qui ne repond pas est annonce, jamais remplace en silence. Le report a
-  // lieu aussi (surtout) à la CONSTRUCTION de la liste, quand `repli` reste null : c'est le modèle
-  // réellement coché qu'il faut nommer, sinon la phrase publiait « reportée sur null ».
-  const neuf = gens.find((g) => g.key === 'qwen9b');
-  const retenu = (document.querySelector('input[name="model"]:checked') || {}).value || pref;
-  const reporte = !!(neuf && !neuf.available && retenu !== 'qwen9b');
-  const nom = modelLabels[retenu] || retenu || 'aucun';
-  repliNote = reporte ? `modèle par défaut indisponible, reporté sur ${nom}` : '';
+  const target = gens.find(g => g.key === 'qwen27b-shono');
+  const unavailable = target && !live.some(g => g.key === target.key);
+  const name = modelLabels[pref] || 'aucun modèle disponible';
+  repliNote = unavailable ? `27B indisponible — ${name} sélectionné` : '';
   const hint = $('modelHint');
-  if (hint) {
-    hint.textContent = reporte
-      ? `9B indisponible (${neuf.error || 'sonde en échec'}) — sélection reportée sur `
-        + `${nom}. Même retrieval.`
-      : 'Même retrieval ; seule la génératrice change.';
-  }
+  if (hint) { hint.textContent = repliNote; hint.hidden = !repliNote; }
+  box.onchange = () => memoriseReglages();
   updatePresetLine();
 }
 // Ce que l'option repliee est en train de choisir, en clair.
@@ -1106,7 +1092,7 @@ function updatePresetLine() {
   const label = model ? (modelLabels[model] || model) : 'modèle en titre';
   const line = `${modeLabel} · ${label}${repliNote ? ` — ${repliNote}` : ''}`;
   const el = $('presetLine'); if (el) el.textContent = line;
-  const sum = $('optionsSummary'); if (sum) sum.textContent = `Options ▸ ${modeLabel.toLowerCase()}`;
+  const sum = $('optionsSummary'); if (sum) sum.textContent = "Options";
 }
 
 async function loadContract() {
@@ -1119,7 +1105,8 @@ async function loadContract() {
     const text = await r.text();
     if (!r.ok) throw C.httpError(r, text);
     contratCharge = true;
-    renderModelOptions(C.apply(JSON.parse(text)).generators || []);
+    const payload = JSON.parse(text);
+    renderModelOptions(C.apply(payload).generators || [], payload.default_generator_key);
   } catch (e) {
     // avant authentification, ce n'est pas une panne : la page n'a simplement pas le droit
     // d'interroger le service. Le dire évite la notice rouge mensongère sous le gate.

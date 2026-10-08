@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>A²-Med — réponses médicales sourcées</title>
 <meta name="description" content="Question médicale, réponse française citée, extraite des recommandations SpILF locales.">
-<link rel="stylesheet" href="./style.css?v=263c3376">
+<link rel="stylesheet" href="./style.css?v=3a591967">
 <link rel="stylesheet" href="./navigation.css?v=5fa1e0d8">
 </head>
 <body data-api="https://mel-mandate-carter-erik.trycloudflare.com">
@@ -53,11 +53,16 @@
       <span id="qHint">Entrée : envoyer · Shift + Entrée : saut de ligne</span>
       <span id="qCount" aria-live="off">0 / 500</span>
     </div>
+    <label class="guided-toggle" for="guidedEnabled">
+      <input id="guidedEnabled" type="checkbox" aria-describedby="guidedHint">
+      <span>Mode guidé</span>
+    </label>
+    <p class="fine guided-hint" id="guidedHint" hidden></p>
     <!-- Le praticien veut une reponse, pas une console : mode et modele sont prereglés
-         (réponse courte, 9B) et repliés sous « Options ». Les valeurs envoyees au service
+         (réponse courte, 27B) et repliés sous « Options ». Les valeurs envoyees au service
          sont exactement les memes qu'avant — seul l'affichage change. -->
     <details class="options" id="optionsBox">
-      <summary id="optionsSummary">Options ▸ réponse courte</summary>
+      <summary id="optionsSummary">Options</summary>
       <fieldset class="mode-picker" aria-describedby="modeHint">
         <legend>Que souhaitez-vous obtenir ?</legend>
         <div class="mode-options">
@@ -68,16 +73,11 @@
         <p class="fine" id="modeHint"></p>
       </fieldset>
       <fieldset class="model-picker" id="modelPicker" hidden aria-describedby="modelHint">
-        <legend>Modèle de test — expérimental</legend>
+        <legend>Modèle</legend>
         <div class="model-options" id="modelOptions"><!-- rempli par /api/capabilities : seuls les modèles réellement répondants sont sélectionnables --></div>
-        <p class="fine" id="modelHint">Même retrieval ; seule la génératrice change.</p>
+        <p class="fine" id="modelHint" hidden></p>
       </fieldset>
     </details>
-    <label class="guided-toggle" for="guidedEnabled">
-      <input id="guidedEnabled" type="checkbox" aria-describedby="guidedHint">
-      <span>Activer le mode guidé</span>
-    </label>
-    <p class="fine guided-hint" id="guidedHint">Expérimental : demande une précision si nécessaire.</p>
     <div class="btn-row">
       <button type="submit" class="btn primary" id="askBtn">Obtenir une réponse</button>
     </div>
@@ -114,7 +114,7 @@
         <h2 class="sr-only" id="guidedTitle">Précision nécessaire</h2>
         <div id="guidedFields"></div>
         <div class="btn-row">
-          <button class="btn primary" id="guidedContinue" type="button">Continuer</button>
+          <button class="btn primary" id="guidedContinue" type="button" hidden>Continuer</button>
         </div>
         <p class="notice" id="guidedError" role="alert" hidden></p>
       </section>
@@ -167,7 +167,7 @@
 <script src="./a2med_stream_view.js?v=6c725126"></script>
 <script src="./a2med_evidence_view.js?v=91acf731"></script>
 <script src="./a2med_document_view.js?v=76162acd"></script>
-<script src="./app.js?v=8e3e8b34"></script>
-<script src="./a2med_consult_guided.js?v=f3c321e7"></script>
+<script src="./app.js?v=81c1ffde"></script>
+<script src="./a2med_consult_guided.js?v=334d0caf"></script>
 </body>
 </html>
