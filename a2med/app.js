@@ -1065,7 +1065,7 @@ function renderModelOptions(gens, defaultKey = "qwen27b-shono") {
   const recommended = live.find(g => g.key === defaultKey)
     || live.find(g => g.key === 'qwen9b') || live.find(g => g.key === 'flash') || live[0];
   const pref = (live.find(g => g.key === prefsMode) || recommended || {}).key || '';
-  const short = {flash:'Flash',qwen9b:'9B',qwen4b:'4B',qwen2b:'2B','qwen27b-shono':'27B · Shono'};
+  const short = {flash:'Flash',qwen9b:'9B',qwen4b:'4B',qwen2b:'2B','qwen27b-shono':'27B · Shono','minicpm-v47':'MiniCPM 4.7'};
   box.innerHTML = gens.map(g => {
     const available = live.some(x => x.key === g.key);
     return `<label class="model-opt${available ? '' : ' off'}" title="${esc(g.label)}">
