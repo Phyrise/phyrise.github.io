@@ -1,0 +1,30 @@
+# Bibliothèque A²-Med — état du pack documentaire
+
+- Dernière mise à jour du pack : **20 octobre 2026**.
+- Dernière collecte / contrôle SPILF : **19 octobre 2026**.
+- **119 documents**, dont **117 utilisés par la recherche** du pack mobile préparé.
+- Le transfert sur téléphone reste à faire. Consultation et Validation en ligne conservent leur corpus actuel.
+
+## Intégré le 20 octobre
+
+1. Posologies SPILF/SFPT/CA-SFM 2026 : remplace 2025.
+2. Légionellose 2026 : diapositives 5 et 11 actualisées.
+3. Infections urinaires masculines : diapositive 23 actualisée.
+4. HAS bucco-dentaire 2026 : ajouté en complément de HAS endocardite 2024.
+5. SFAR infections intra-abdominales 2026 : ajouté ; 90 pages indexées sur 91, la page 17 étant blanche.
+
+## Conservé
+
+Shigella 2004 reste actif selon la décision d’Arthur, avec son statut d’archive visible. RFE antibioprophylaxie V3.1, mélioïdose V2 et PDF voyageurs 2026 conservés.
+
+## Ce que les dates signifient
+
+La date du document, quand elle est connue, vient de la source. La date de collecte/contrôle est celle de notre vérification distante. La date de mise à jour du pack indique l’intégration des fichiers et index. Aucune de ces dates ne constitue une validation médicale exhaustive.
+
+Le contrôle couvre 140 liens directs. Il comporte des accès distants incomplets et des réponses HTML de protection, détaillés dans l’onglet de suivi. Aucun suivi automatique n’est actif. Les titres courts et domaines sont des libellés éditoriaux de navigation.
+
+Les documents originaux sont lus sur le serveur documentaire ; ils ne sont pas recopiés dans le dépôt GitHub Pages. Le catalogue et ce compte rendu restent consultables même si la lecture des PDF est temporairement indisponible.
+
+## Préparation et limites
+
+BM25 et E5-small INT8 conservés. 8 782 vecteurs réutilisés et 150 passages encodés sur CPU Sparka. Extraction native sans réécriture médicale. La limite de 512 tokens d’E5 demeure ; BM25 utilise le texte complet. Les nouveaux documents n’ont pas fait l’objet d’une nouvelle adjudication clinique experte.
